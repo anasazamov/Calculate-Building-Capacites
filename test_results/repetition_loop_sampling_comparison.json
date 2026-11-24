@@ -1,0 +1,54 @@
+{
+ "default_0.2": [
+  {
+   "loop": false,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 77
+  },
+  {
+   "loop": true,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 78
+  },
+  {
+   "loop": false,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 78
+  },
+  {
+   "loop": true,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 78
+  }
+ ],
+ "card_0.7": [
+  {
+   "loop": true,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 77
+  },
+  {
+   "loop": true,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 77
+  },
+  {
+   "loop": true,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 78
+  },
+  {
+   "loop": true,
+   "finish": "length",
+   "tokens": 3000,
+   "seconds": 77
+  }
+ ]
+}

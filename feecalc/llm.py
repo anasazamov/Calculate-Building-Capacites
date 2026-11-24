@@ -44,6 +44,10 @@ class DegenerateOutput(ModelError):
     """The response is a run of one repeated token (the "!!!!" failure)."""
 
 
+class RepetitionLoop(MalformedResponse):
+    """The response contains a repetition loop."""
+
+
 @dataclass(frozen=True)
 class Model:
     key: str                   # "model1" | "model2"
@@ -88,16 +92,20 @@ def vllm_version(m: Model) -> str:
 
 
 def degenerate_reason(text: str) -> str | None:
-    """Description of a degenerate-output symptom, or None."""
+    """Symptom of the persistent "!!!!" failure (the server must be restarted), or None."""
     t = text.strip()
-    if not t:
-        return None
     if re.search(r"!{4,}", t):
         return "javobda '!!!!' ketma-ketligi"
-    m = re.search(r"([^\s\d])\1{39,}", t)
+    m = re.search(r"([^\s\d|])\1{39,}", t)
     if m:
         return f"bir xil belgi {len(m.group(0))} marta ketma-ket: {m.group(1)!r}"
-    m = re.search(r"(.{2,40}?)\1{11,}", t, flags=re.S)
+    return None
+
+
+def repetition_reason(text: str) -> str | None:
+    """A repetition loop inside one response (e.g. "| | | | ..."). It spoils that response only:
+    the request fails, but the server is healthy and is not restarted."""
+    m = re.search(r"(.{2,40}?)\1{11,}", text, flags=re.S)
     if m and not re.fullmatch(r"[\d\s.,]+", m.group(1)):
         return f"bir xil bo'lak 12+ marta takrorlangan: {m.group(1)[:20]!r}"
     return None
@@ -175,6 +183,9 @@ def check_response(m: Model, response: dict, schema: dict, key: str) -> dict:
     if reason:
         _write_marker(m, reason, key)
         raise DegenerateOutput(f"{m.key}: aynish alomati — {reason} (xom javob: {key})")
+    loop = repetition_reason(text)
+    if loop:
+        raise RepetitionLoop(f"{m.key}: takrorlanish halqasi — {loop} (xom javob: {key})")
     if not text.strip():
         raise MalformedResponse(f"{m.key}: content bo'sh (finish_reason={choice.get('finish_reason')}, "
                                 f"xom javob: {key})")

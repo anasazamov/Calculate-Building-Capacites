@@ -17,7 +17,7 @@ def test_valid_response():
     assert llm.check_response(M, response('{"a": "x"}'), SCHEMA, "k") == {"a": "x"}
 
 
-@pytest.mark.parametrize("text", ["!!!!", "!!!!!!!!!!!!!!!!", '{"a": "!!!!!!"}', "a" * 60, "ab " * 30])
+@pytest.mark.parametrize("text", ["!!!!", "!!!!!!!!!!!!!!!!", '{"a": "!!!!!!"}', "a" * 60])
 def test_degenerate_output_detected_and_marked(text, tmp_path: Path, monkeypatch):
     monkeypatch.setenv("FEECALC_DEGENERATE_MARKER", str(tmp_path / "marker.jsonl"))
     with pytest.raises(llm.DegenerateOutput):
@@ -25,9 +25,17 @@ def test_degenerate_output_detected_and_marked(text, tmp_path: Path, monkeypatch
     assert json.loads((tmp_path / "marker.jsonl").read_text().splitlines()[0])["model"] == "model1"
 
 
+@pytest.mark.parametrize("text", ['{"a": "1 ' + "| " * 40 + '"}', "ab " * 30])
+def test_repetition_loop_fails_the_request_without_restart_marker(text, tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("FEECALC_DEGENERATE_MARKER", str(tmp_path / "marker.jsonl"))
+    with pytest.raises(llm.RepetitionLoop):
+        llm.check_response(M, response(text), SCHEMA, "k")
+    assert not (tmp_path / "marker.jsonl").exists()
+
+
 def test_numbers_are_not_degenerate():
     assert llm.degenerate_reason('{"a": "1000000000000000000000000000000000000000000000000"}') is None
-    assert llm.degenerate_reason("0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000") is None
+    assert llm.repetition_reason("0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000") is None
 
 
 def test_empty_truncated_and_invalid_are_errors():

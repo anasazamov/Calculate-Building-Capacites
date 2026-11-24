@@ -3,7 +3,9 @@
 Known failure (seen with Qwen3.6-27B on vLLM): the output collapses to "!!!!" and stays that
 way for every later request; the server does not recover by itself. Two signals trigger a
 restart: (1) the canary fails twice in a row, (2) the client wrote a new line to the
-degenerate-output marker file. Every event is appended to logs/incidents.jsonl.
+degenerate-output marker file (only for the "!!!!" symptom; an ordinary repetition loop in one
+response fails that request but does not restart the server). Every event is appended to
+logs/incidents.jsonl.
 
 No try/except: the canary runs in a child process and its exit code is the health signal.
 
@@ -116,6 +118,7 @@ def main() -> None:
                 stop_server(proc)
                 time.sleep(10)
             failures = 0
+            seen_markers = marker_lines(arg.model)  # markers written before this start are already handled
             continue
         time.sleep(arg.interval)
         reason = ""

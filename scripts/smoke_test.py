@@ -44,7 +44,7 @@ def one(m: llm.Model, i: int, sampling: dict, shape_in_prompt: bool = True) -> d
     content = choice["message"].get("content") or ""
     out["tokens"] = j["usage"]["completion_tokens"]
     out["raw"] = content[:300]
-    if llm.degenerate_reason(content):
+    if llm.degenerate_reason(content) or llm.repetition_reason(content):
         out["status"] = "degenerate"
     elif not content.strip():
         out["status"] = "empty"

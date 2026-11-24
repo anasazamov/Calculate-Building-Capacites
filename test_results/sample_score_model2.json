@@ -1,0 +1,313 @@
+{
+ "model": "model2",
+ "rows": 221,
+ "classes": {
+  "correct": 201,
+  "out_of_scope": 10,
+  "caught": 8,
+  "not_found": 2
+ },
+ "by_sample": {
+  "284459": {
+   "correct": 68,
+   "caught": 4,
+   "out_of_scope": 6,
+   "not_found": 1
+  },
+  "291405": {
+   "correct": 18,
+   "not_found": 1
+  },
+  "298814": {
+   "correct": 17
+  },
+  "302030": {
+   "correct": 46,
+   "caught": 4,
+   "out_of_scope": 2
+  },
+  "302704": {
+   "correct": 52,
+   "out_of_scope": 2
+  }
+ },
+ "by_field": {
+  "loyiha:balandlik_bino_max": {
+   "out_of_scope": 1
+  },
+  "loyiha:bolim": {
+   "out_of_scope": 1
+  },
+  "loyiha:hajm_yer_osti": {
+   "correct": 1
+  },
+  "loyiha:hajm_yer_usti": {
+   "correct": 1
+  },
+  "loyiha:hudud_kokalamzor_maydoni": {
+   "correct": 1
+  },
+  "loyiha:hudud_maydoni": {
+   "correct": 1
+  },
+  "loyiha:hudud_qoplama_maydoni": {
+   "correct": 1
+  },
+  "loyiha:hudud_qurilish_maydoni": {
+   "correct": 1
+  },
+  "loyiha:loyiha_shifri": {
+   "correct": 1
+  },
+  "loyiha:manzil": {
+   "caught": 1,
+   "correct": 1
+  },
+  "loyiha:manzil_umumiy_malumot_kocha": {
+   "correct": 1
+  },
+  "loyiha:manzil_umumiy_malumot_tuman": {
+   "correct": 1
+  },
+  "loyiha:maydon_1_qavat": {
+   "correct": 1
+  },
+  "loyiha:maydon_2_16_qavat": {
+   "correct": 1
+  },
+  "loyiha:maydon_texnik_52420": {
+   "correct": 1
+  },
+  "loyiha:maydon_umumiy_foydalanish": {
+   "correct": 1
+  },
+  "loyiha:maydon_yertola": {
+   "correct": 1
+  },
+  "loyiha:nomi": {
+   "correct": 5
+  },
+  "loyiha:qavatlar_soni": {
+   "correct": 2
+  },
+  "loyiha:qurilish_hajmi": {
+   "correct": 6
+  },
+  "loyiha:qurilish_maydoni": {
+   "correct": 6
+  },
+  "loyiha:sath_belgisi_16_qavat": {
+   "not_found": 1
+  },
+  "loyiha:sath_belgisi_2_qavat": {
+   "correct": 1
+  },
+  "loyiha:sath_belgisi_texnik": {
+   "correct": 1
+  },
+  "loyiha:sath_belgisi_yertola": {
+   "correct": 1
+  },
+  "loyiha:soni": {
+   "caught": 1
+  },
+  "loyiha:tarx_olchami": {
+   "correct": 1
+  },
+  "loyiha:umumiy_maydon": {
+   "correct": 6
+  },
+  "loyiha:xona_maydoni_lift_xolli": {
+   "correct": 1
+  },
+  "loyiha:xona_maydoni_lodjiya": {
+   "correct": 1
+  },
+  "loyiha:xona_maydoni_nasosxona": {
+   "correct": 1
+  },
+  "loyiha:xona_maydoni_zinapoya": {
+   "correct": 1
+  },
+  "loyiha:xona_nomi_nasosxona": {
+   "out_of_scope": 1
+  },
+  "loyiha:xonadonlar_2_xonali": {
+   "out_of_scope": 1
+  },
+  "loyiha:xonadonlar_3_xonali": {
+   "out_of_scope": 1
+  },
+  "loyiha:xonadonlar_soni": {
+   "correct": 1
+  },
+  "xulosa:balandlik_1_qavat": {
+   "correct": 2
+  },
+  "xulosa:balandlik_mansarda_max": {
+   "correct": 1
+  },
+  "xulosa:balandlik_mansarda_min": {
+   "correct": 1
+  },
+  "xulosa:balandlik_max": {
+   "correct": 3
+  },
+  "xulosa:balandlik_min": {
+   "correct": 3
+  },
+  "xulosa:balandlik_poydevor": {
+   "correct": 4
+  },
+  "xulosa:balandlik_qavat": {
+   "correct": 9
+  },
+  "xulosa:balandlik_yertola": {
+   "correct": 4
+  },
+  "xulosa:binolar_soni": {
+   "out_of_scope": 1
+  },
+  "xulosa:buyurtmachi": {
+   "correct": 3,
+   "caught": 1
+  },
+  "xulosa:foydali_maydon": {
+   "correct": 5
+  },
+  "xulosa:havola": {
+   "correct": 2
+  },
+  "xulosa:hudud_binolar_osti_1_bosqich": {
+   "correct": 1
+  },
+  "xulosa:hudud_binolar_osti_2_bosqich": {
+   "correct": 1
+  },
+  "xulosa:hudud_kokalamzor_1_bosqich": {
+   "correct": 1
+  },
+  "xulosa:hudud_kokalamzor_2_bosqich": {
+   "correct": 1
+  },
+  "xulosa:hudud_kokalamzor_maydoni": {
+   "correct": 1
+  },
+  "xulosa:hudud_maydoni": {
+   "correct": 5
+  },
+  "xulosa:hudud_obodonlashtirish_maydoni": {
+   "correct": 3
+  },
+  "xulosa:hudud_qoplama_1_bosqich": {
+   "correct": 1
+  },
+  "xulosa:hudud_qoplama_2_bosqich": {
+   "correct": 1
+  },
+  "xulosa:hudud_qoplama_maydoni": {
+   "correct": 4
+  },
+  "xulosa:hudud_qurilish_maydoni": {
+   "correct": 4
+  },
+  "xulosa:hudud_tashqari_kokalamzor": {
+   "correct": 1
+  },
+  "xulosa:hudud_tashqari_qoplama": {
+   "correct": 1
+  },
+  "xulosa:hudud_yolaklar_maydoni": {
+   "correct": 1
+  },
+  "xulosa:hudud_zaxira": {
+   "correct": 1
+  },
+  "xulosa:ichki_diametr": {
+   "out_of_scope": 1
+  },
+  "xulosa:jami_hajm": {
+   "correct": 1
+  },
+  "xulosa:jami_qurilish_maydoni": {
+   "correct": 1
+  },
+  "xulosa:jami_umumiy_maydon": {
+   "correct": 1
+  },
+  "xulosa:manzil": {
+   "correct": 3,
+   "caught": 1,
+   "not_found": 1
+  },
+  "xulosa:murojaat_raqami": {
+   "correct": 5
+  },
+  "xulosa:qavatlar_soni": {
+   "correct": 5,
+   "caught": 4
+  },
+  "xulosa:qurilish_hajmi": {
+   "correct": 15
+  },
+  "xulosa:qurilish_maydoni": {
+   "correct": 15
+  },
+  "xulosa:qurilish_turi": {
+   "correct": 5
+  },
+  "xulosa:tarx_eni": {
+   "out_of_scope": 1
+  },
+  "xulosa:tarx_olchami": {
+   "correct": 10
+  },
+  "xulosa:tarx_uzunligi": {
+   "out_of_scope": 1
+  },
+  "xulosa:tashqi_diametr": {
+   "out_of_scope": 1
+  },
+  "xulosa:umumiy_maydon": {
+   "correct": 15
+  },
+  "xulosa:xonadonlar_soni": {
+   "correct": 2
+  },
+  "xulosa:xulosa_raqami": {
+   "correct": 5
+  },
+  "xulosa:xulosa_sanasi": {
+   "correct": 5
+  }
+ },
+ "silent_errors": [],
+ "failed_samples": {},
+ "timing": {
+  "284459": {
+   "conclusion_s": 379.2,
+   "project_s": 521.9,
+   "total_s": 901.2
+  },
+  "291405": {
+   "conclusion_s": 298.7,
+   "project_s": 80.5,
+   "total_s": 379.2
+  },
+  "298814": {
+   "conclusion_s": 166.5,
+   "project_s": 0.0,
+   "total_s": 166.5
+  },
+  "302030": {
+   "conclusion_s": 219.0,
+   "project_s": 732.9,
+   "total_s": 951.9
+  },
+  "302704": {
+   "conclusion_s": 564.2,
+   "project_s": 0.0,
+   "total_s": 564.2
+  }
+ }
+}
