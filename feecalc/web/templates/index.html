@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ishlar</h1>
+<div class="card">
+  <h2 style="margin-top:0">Yangi ish: hujjatlarni yuklash</h2>
+  <form method="post" action="/jobs" enctype="multipart/form-data">
+    <div class="row">
+      <div><label>Ish nomi (ixtiyoriy)</label><input type="text" name="title" size="34" placeholder="masalan: Maysazor, Tip-2"></div>
+      <div><label>Loyiha (AR albomi) — bir yoki bir nechta PDF</label><input type="file" name="project" accept="application/pdf,.pdf" multiple required></div>
+      <div><label>Ekspertiza xulosasi — PDF</label><input type="file" name="conclusion" accept="application/pdf,.pdf" required></div>
+      <div><button type="submit" {% if not staff %}disabled title="Avval xodim ismini kiriting"{% endif %}>Yuklash va navbatga qo'yish</button></div>
+    </div>
+  </form>
+  <p class="small muted">Modellar holati:
+    1-model <span class="badge {{ 'ok' if model1_up else 'bad' }}">{{ 'ishlayapti' if model1_up else 'ishlamayapti' }}</span>
+    2-model <span class="badge {{ 'ok' if model2_up else 'not_found' }}">{{ 'ishlayapti' if model2_up else "yo'q (faqat 1-model bilan ishlaydi)" }}</span>.
+    Hujjatlar serverdan tashqariga chiqmaydi; OCR yo'q — matn qatlami bo'lmagan sahifa "matnsiz" deb belgilanadi.</p>
+</div>
+<div class="row" style="justify-content:space-between"><h2>Barcha ishlar</h2><a class="btn secondary" href="/export.csv">CSV eksport</a></div>
+<table>
+  <tr><th>№</th><th>Nomi</th><th>Holati</th><th>Yaratilgan</th><th>Xodim</th>
+      {% for c in VOLUME_CODES %}<th class="n">{{ c }}, m³</th>{% endfor %}<th class="n">Yig'im, so'm</th><th></th></tr>
+  {% for j in jobs %}
+  {% set fin = j.final or {} %}
+  <tr>
+    <td>{{ j.id }}</td><td><a href="/jobs/{{ j.id }}">{{ j.title }}</a></td>
+    <td><span class="badge {{ j.status }}">{{ JOB_STATUS[j.status] }}</span></td>
+    <td>{{ j.created }}</td><td>{{ j.created_by }}</td>
+    {% for c in VOLUME_CODES %}<td class="n">{% if fin %}{{ fin.volumes[c].decision.value | num }}{% endif %}</td>{% endfor %}
+    <td class="n">{% if fin %}{{ fin.fee.result.fee | money }}{% endif %}</td>
+    <td>{% if j.status in ('ready', 'finalized') %}<a href="/jobs/{{ j.id }}/review">tekshirish</a> · <a href="/jobs/{{ j.id }}/calc">hisob</a>{% if fin %} · <a href="/jobs/{{ j.id }}/sheet">varaqa</a>{% endif %}{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="12" class="muted">Hali ish yuklanmagan.</td></tr>{% endfor %}
+</table>
+{% endblock %}

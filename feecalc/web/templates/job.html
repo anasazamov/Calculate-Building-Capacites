@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Ish №{{ job.id }}{% endblock %}
+{% block content %}
+<h1>Ish №{{ job.id }}: {{ job.title }} <span id="status" class="badge {{ job.status }}">{{ JOB_STATUS[job.status] }}</span></h1>
+<div class="card">
+  <h3 style="margin-top:0">Bosqichlar</h3>
+  <ul class="steps" id="steps">{% for code, label in STAGES %}<li data-stage="{{ code }}">{{ label }}</li>{% endfor %}</ul>
+  <p class="small muted">Yuklagan: {{ job.created_by }}, {{ job.created }}. Fayllar:
+  {% for f in files %}{{ 'loyiha' if f.role == 'project' else 'xulosa' }} — {{ f.name }}{{ '; ' if not loop.last }}{% endfor %}</p>
+  <div id="actions" {% if job.status not in ('ready', 'finalized') %}hidden{% endif %}>
+    <a class="btn" href="/jobs/{{ job.id }}/review">Tekshirish ekrani</a>
+    <a class="btn secondary" href="/jobs/{{ job.id }}/calc">Hisob</a>
+    <a class="btn secondary" href="/jobs/{{ job.id }}/sheet">Hisob varaqasi</a>
+  </div>
+  <div id="failed" {% if job.status != 'failed' %}hidden{% endif %}>
+    <p class="err"><b>Ish xato bilan to'xtadi.</b> Xato to'liq holda quyida; tizim hech narsani taxmin qilib to'ldirmadi.</p>
+    <pre class="error" id="error">{{ job.error }}</pre>
+    <form method="post" action="/jobs/{{ job.id }}/retry"><button type="submit">Qayta ishga tushirish</button>
+    <span class="small muted">Saqlangan model javoblari qayta so'ralmaydi.</span></form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const order = {{ STAGES | map(attribute=0) | list | tojson }};
+const labels = {{ JOB_STATUS | tojson }};
+function paint(s) {
+  const at = order.indexOf(s.stage);
+  document.querySelectorAll('#steps li').forEach((li, i) => {
+    li.className = (s.status === 'ready' || s.status === 'finalized' || i < at) ? 'done' : (i === at && s.status === 'running' ? 'now' : '');
+  });
+  const b = document.getElementById('status'); b.textContent = labels[s.status]; b.className = 'badge ' + s.status;
+  document.getElementById('actions').hidden = !(s.status === 'ready' || s.status === 'finalized');
+  document.getElementById('failed').hidden = s.status !== 'failed';
+  document.getElementById('error').textContent = s.error;
+}
+async function poll() {
+  const s = await (await fetch('/jobs/{{ job.id }}/status')).json();
+  paint(s);
+  if (s.status === 'queued' || s.status === 'running') setTimeout(poll, 2000);
+}
+paint({status: {{ job.status | tojson }}, stage: {{ job.stage | tojson }}, error: {{ job.error | tojson }}});
+poll();
+</script>
+{% endblock %}

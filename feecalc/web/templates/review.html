@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Tekshirish — ish №{{ job.id }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block nav %}<a href="/jobs/{{ job.id }}">Ish №{{ job.id }}</a><a href="/jobs/{{ job.id }}/review"><b>Tekshirish</b></a><a href="/jobs/{{ job.id }}/calc">Hisob</a><a href="/jobs/{{ job.id }}/sheet">Hisob varaqasi</a>{% endblock %}
+
+{% macro src(v) -%}
+{% if v and v.file and v.page %}class="src" data-file="{{ v.file }}" data-page="{{ v.page }}" data-snippet="{{ v.source_text or '' }}" title="Manbani ko'rsatish: {{ v.file }}, {{ v.page }}-sahifa"{% endif %}
+{%- endmacro %}
+
+{% macro cell(v) -%}
+{% if v is none %}<td class="muted">—</td>
+{% else %}<td {{ src(v) }}>
+  {% if v.value is not none %}<b>{{ v.value }}</b>{% if v.unit %} <span class="muted">{{ v.unit }}</span>{% endif %}{% endif %}
+  <span class="badge {{ v.status }}">{{ STATUS_LABELS[v.status] }}</span>
+  {% if v.reason %}<div class="flag">{{ v.reason }}</div>{% endif %}
+  {% for f in v.flags %}<div class="flag">⚑ {{ f }}</div>{% endfor %}
+  {% if v.page %}<div class="small muted">{{ v.page }}-sahifa: <span class="snippet">{{ v.source_text }}</span></div>{% endif %}
+</td>{% endif %}
+{%- endmacro %}
+
+{% macro cell2(v, agreement) -%}
+<td {{ src(v) }}>{% if v %}{% if v.value is not none %}{{ v.value }} {% endif %}<span class="badge {{ v.status }}">{{ STATUS_LABELS[v.status] }}</span>{% endif %}
+{% if agreement %}<div><span class="badge {{ agreement }}">{{ AGREEMENT[agreement] }}</span></div>{% endif %}</td>
+{%- endmacro %}
+
+{% block content %}
+{% set locked = job.status == 'finalized' %}
+{% set two = 'model2' in result.models %}
+<div class="review">
+<aside class="viewer">
+  <div class="bar">
+    <select id="file">{% for f in result.files %}<option value="{{ f.name }}" data-pages="{{ f.pages | length }}">{{ 'Loyiha' if f.role == 'project' else 'Xulosa' }}: {{ f.name }}</option>{% endfor %}</select>
+    <button class="secondary" id="prev">‹</button><span>sahifa <input type="number" id="page" value="1" min="1" style="width:58px"> / <span id="pages"></span></span><button class="secondary" id="next">›</button>
+    <button class="secondary" id="zoomout">−</button><button class="secondary" id="zoomin">+</button><button class="secondary" id="fit">Sig'dirish</button>
+    <span id="sheetinfo" class="muted"></span>
+  </div>
+  <div class="canvas" id="canvas"><div class="sheet" id="sheet"><img id="img" alt="Sahifa rasmi"></div></div>
+  <div class="bar"><span id="snippetinfo" class="muted">Jadvaldagi qiymatni bosing — manba parchasi sahifada ajratib ko'rsatiladi.</span></div>
+</aside>
+
+<section>
+<h1>Ish №{{ job.id }}: {{ job.title }} {% if locked %}<span class="badge finalized">yakunlangan</span>{% endif %}</h1>
+<p class="small muted">Modellar: {% for k, m in result.models.items() %}{{ '1-model' if k == 'model1' else '2-model' }} — {{ m.name }} (vLLM {{ m.vllm_version }}){{ '; ' if not loop.last }}{% endfor %}.
+So'rov matni versiyasi {{ result.prompt_version }}. O'qish vaqti: {% for k, t in result.timing.items() %}{{ k }} {{ t }} s{{ ', ' if not loop.last }}{% endfor %}.</p>
+
+{% if result.warnings %}<div class="notice"><b>Ogohlantirishlar</b><ul style="margin:4px 0 0 18px;padding:0">{% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="card" id="fields">
+  <h2 style="margin-top:0">Xulosadagi bino</h2>
+  <form method="post" action="/jobs/{{ job.id }}/building" class="row">
+    <select name="index" {% if locked %}disabled{% endif %}>
+      {% if view.building_index is none %}<option value="" selected disabled>— tanlang —</option>{% endif %}
+      {% for b in conclusion_buildings %}<option value="{{ loop.index0 }}" {% if loop.index0 == view.building_index %}selected{% endif %}>{{ loop.index }}. {{ b.type.value or '' }} — {{ b.name.value or '?' }} (hajmi {{ b.volume.value or '?' }})</option>{% endfor %}
+    </select>
+    {% if not locked %}<button class="secondary" type="submit">Tanlash</button>{% endif %}
+    <span class="small muted">{{ view.building_count }} ta bino o'qildi; tanlov asosi: {{ view.building_note }}</span>
+  </form>
+
+  <h2>Maydonlar</h2>
+  <table>
+    <tr><th>Maydon</th><th>Loyiha (1-model)</th><th>Xulosa (1-model)</th>{% if two %}<th>Loyiha (2-model)</th><th>Xulosa (2-model)</th>{% endif %}<th>Tekshiruv</th></tr>
+    {% for r in view.rows %}
+    <tr><td>{{ r.label }}</td>{{ cell(r.project) }}{{ cell(r.conclusion) }}
+      {% if two %}{{ cell2(r.project_model2, r.agreement_project) }}{{ cell2(r.conclusion_model2, r.agreement_conclusion) }}{% endif %}
+      <td>{% if r.check %}<span class="badge {{ r.check.status }}">{{ CHECK_LABELS[r.check.status] }}</span><div class="small muted">{{ r.check.detail }}</div>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Tekshiruvlar</h2>
+  <table>
+    <tr><th>Tekshiruv</th><th>Natija</th><th>Tafsilot</th></tr>
+    {% for c in view.checks %}<tr><td>{{ c.name }}</td><td><span class="badge {{ c.status }}">{{ CHECK_LABELS[c.status] }}</span></td><td class="small">{{ c.detail }}</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Balandliklar va sath belgilari</h2>
+  <table>
+    <tr><th>Sath (hujjatdagidek)</th><th class="n">Balandlik, m</th><th>Manba</th></tr>
+    {% for h in view.heights %}<tr><td>{{ h.level }}</td><td class="n">{{ h.value | num }}</td><td>{{ h.origin }}</td></tr>
+    {% else %}<tr><td colspan="3" class="muted">Hujjatlardan qavat balandligi qabul qilinmadi — balandliklarni xodim kiritadi.</td></tr>{% endfor %}
+  </table>
+  {% if result.level_marks %}<p class="small">Kesim varag'idagi sath belgilari (kod bilan o'qilgan, ma'lumot uchun):
+  {% for m in result.level_marks %}<span class="src snippet" data-file="{{ m.file }}" data-page="{{ m.page }}" data-snippet="{{ m.source_text }}">{{ m.source_text }}</span> {% endfor %}</p>{% endif %}
+</div>
+
+<div class="card" id="components">
+  <h2 style="margin-top:0">Xonalar va maydon qatorlari (hajm tarkibi)</h2>
+  <p class="small muted">Toifa: Ha — avtoturargoh, Ht — texnik, Hu — umumiy foydalanish. Hajm hujjatda yozilmagan bo'lsa maydon × sath balandligi (hisoblangan). Har o'zgartirishda sabab majburiy.</p>
+  <table>
+    <tr><th>Nomi</th><th>Sath</th><th class="n">Maydon, m²</th><th>Toifa</th><th class="n">Balandlik, m</th><th>Hajm</th><th>Hisobga kiradi</th></tr>
+    {% for c in view.components %}
+    <tr>
+      <td class="src" data-file="{{ c.file }}" data-page="{{ c.page }}" data-snippet="{{ c.source_text or '' }}">{{ c.name }}
+        <div class="small muted">{{ "ko'rsatkichlar jadvali" if c.origin == 'breakdown' else 'xonalar jadvali' }}, {{ c.page }}-sahifa{% if c.area_status != 'accepted' %} <span class="badge {{ c.area_status }}">{{ STATUS_LABELS[c.area_status] }}</span>{% endif %}</div></td>
+      <td>{{ c.level_text or '—' }}</td>
+      <td class="n">{{ c.area | num }}</td>
+      <td><b>{{ c.category if c.category != 'other' else 'boshqa' }}</b>
+        {% if c.needs_confirmation %}<span class="badge unverified">xodim tasdiqlashi kerak</span>{% endif %}
+        <div class="small muted">{{ {'dictionary': "lug'at", 'dictionary:mixed': "lug'at (aralash)", 'model': 'model taklifi', 'staff': 'xodim', 'level_row': 'sath qatori', 'none': 'aniqlanmadi'}[c.category_method] }}{% if c.category_note %}: {{ c.category_note }}{% endif %}</div></td>
+      <td class="n">{{ c.height | num }}<div class="small muted" style="white-space:normal;text-align:left">{{ c.height_note }}</div></td>
+      <td><div class="formula">{{ c.formula }}</div>
+        {% if c.override %}<div class="small">✎ {{ c.override.user }}, {{ c.override.time }}: {{ c.override.reason }}</div>{% endif %}</td>
+      <td>{{ 'ha' if c.included else "yo'q" }}{% if c.exclusion_note %}<div class="small muted">{{ c.exclusion_note }}</div>{% endif %}
+        {% if not locked %}<details class="edit"><summary>o'zgartirish</summary>
+        <form method="post" action="/jobs/{{ job.id }}/component/{{ c.id }}">
+          <label>Toifa</label><select name="category"><option value="">— o'zgarmaydi —</option>{% for k in CATEGORIES %}<option value="{{ k }}">{{ k if k != 'other' else 'boshqa' }} — {{ CATEGORY_LABELS[k] }}</option>{% endfor %}</select>
+          <label>Balandlik, m</label><input type="text" name="height" size="8" placeholder="{{ c.height or '' }}">
+          <label>yoki tayyor hajm, m³</label><input type="text" name="volume" size="10">
+          <label>Hisobga kiritish</label><select name="included"><option value="">— o'zgarmaydi —</option><option value="yes">ha</option><option value="no">yo'q</option></select>
+          <label>Sababi (majburiy)</label><input type="text" name="reason" size="30" required minlength="3">
+          <div style="margin-top:6px"><button type="submit">Saqlash</button></div>
+        </form></details>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="7" class="muted">Loyihadan xona yoki maydon qatori o'qilmadi.</td></tr>{% endfor %}
+  </table>
+</div>
+
+<h2>Hajmlar — har birini tasdiqlang yoki o'zgartiring</h2>
+{% for code in VOLUME_CODES %}
+{% set v = view.volumes[code] %}{% set d = view.decisions[code] %}
+<div class="card vol {{ 'valid' if d.valid else ('stale' if d.stale else '') }}" id="vol-{{ code }}">
+  <div class="row" style="justify-content:space-between">
+    <div><b>{{ code }}</b> — {{ VOLUME_LABELS[code] }}</div>
+    <div>{% if d.valid %}<span class="badge ok">{{ 'tasdiqlangan' if d.decision.status == 'confirmed' else "o'zgartirilgan" }}: {{ d.decision.user }}, {{ d.decision.time }}</span>
+         {% elif d.stale %}<span class="badge stale">taklif o'zgardi — qayta tasdiqlang</span>
+         {% else %}<span class="badge not_run">tasdiqlanmagan</span>{% endif %}</div>
+  </div>
+  <div class="row" style="margin-top:6px">
+    <div><div class="small muted">Taklif</div><div class="value">{% if v.proposal is not none %}{{ v.proposal | num }} m³{% else %}—{% endif %}</div></div>
+    {% if d.valid %}<div><div class="small muted">Qabul qilingan qiymat</div><div class="value">{{ d.decision.value | num }} m³</div></div>{% endif %}
+  </div>
+  {% if v.formula %}<div class="formula" style="margin-top:6px">{{ v.formula }}</div>{% endif %}
+  {% for n in v.notes %}<div class="flag">• {{ n }}</div>{% endfor %}
+  {% if v.check %}<div class="small" style="margin-top:4px"><span class="badge {{ v.check.status }}">{{ CHECK_LABELS[v.check.status] }}</span> {{ v.check.detail }}</div>{% endif %}
+  {% if d.valid and d.decision.reason %}<div class="small">Sabab: {{ d.decision.reason }}</div>{% endif %}
+  {% if v.component_ids %}<div class="small muted" style="margin-top:4px">Tarkibi: {% for c in view.components if c.id in v.component_ids %}{{ c.name }} ({{ c.formula }}){{ '; ' if not loop.last }}{% endfor %}</div>{% endif %}
+  {% if code == 'Hyu' %}
+  <form method="post" action="/jobs/{{ job.id }}/floors" class="row" style="margin-top:8px">
+    <div><label>Ruxsat etilgan qavatlar soni (xodim kiritadi)</label><input type="number" name="permitted_floors" min="0" max="200" value="{{ job.permitted_floors if job.permitted_floors is not none else '' }}" required {% if locked %}disabled{% endif %}></div>
+    {% if not locked %}<button class="secondary" type="submit">Saqlash va taklifni hisoblash</button>{% endif %}
+    <span class="small muted">Binoning qavatlar soni (hujjatdan): {{ view.floors or '—' }}</span>
+  </form>{% endif %}
+  {% if not locked %}
+  <div class="row" style="margin-top:8px">
+    <form method="post" action="/jobs/{{ job.id }}/volume/{{ code }}/confirm"><button type="submit" {% if v.proposal is none or not staff %}disabled{% endif %}>Taklifni tasdiqlash</button></form>
+    <details class="edit"><summary>o'zgartirish (sababi majburiy)</summary>
+      <form method="post" action="/jobs/{{ job.id }}/volume/{{ code }}/change" class="row">
+        <div><label>Qiymat, m³</label><input type="text" name="value" size="12" required></div>
+        <div><label>Sababi</label><input type="text" name="reason" size="40" required minlength="3"></div>
+        <button type="submit" {% if not staff %}disabled{% endif %}>Saqlash</button>
+      </form></details>
+  </div>{% endif %}
+</div>
+{% endfor %}
+
+<div class="card">
+  {% if view.all_confirmed %}<span class="badge ok">Barcha hajmlar tasdiqlangan</span>{% else %}<span class="badge not_run">Tasdiqlanmagan hajmlar bor — yakunlab bo'lmaydi</span>{% endif %}
+  <a class="btn" href="/jobs/{{ job.id }}/calc" style="margin-left:10px">Hisobga o'tish →</a>
+</div>
+</section>
+</div>
+{% endblock %}
+{% block scripts %}<script>const JOB_ID = {{ job.id }};</script><script src="/static/review.js"></script>{% endblock %}

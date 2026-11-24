@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Infratuzilma yig'imi{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <a href="/">Infratuzilma yig'imi — hajmlarni o'qish</a>
+  <nav>{% block nav %}{% endblock %}</nav>
+  <form method="post" action="/whoami">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <span class="small">Xodim:</span>
+    <input type="text" name="name" value="{{ staff }}" placeholder="Ism-familiya" required>
+    <button class="secondary" type="submit">Saqlash</button>
+  </form>
+</header>
+<main class="{% block main_class %}{% endblock %}">
+{% if not staff %}<div class="notice noprint">Yuklash, tasdiqlash va o'zgartirish uchun avval tepada xodim ismini kiriting — u audit jurnaliga yoziladi.</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

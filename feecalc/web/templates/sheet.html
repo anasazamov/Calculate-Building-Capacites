@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Hisob varaqasi — ish №{{ job.id }}{% endblock %}
+{% block nav %}<a href="/jobs/{{ job.id }}">Ish №{{ job.id }}</a><a href="/jobs/{{ job.id }}/review">Tekshirish</a><a href="/jobs/{{ job.id }}/calc">Hisob</a><a href="/jobs/{{ job.id }}/sheet"><b>Hisob varaqasi</b></a>{% endblock %}
+{% macro val(v) %}{% if v %}{% if v.value is not none %}{{ v.value }}{% if v.unit %} {{ v.unit }}{% endif %}{% else %}—{% endif %} <span class="small muted">[{{ STATUS_LABELS[v.status] }}{% if v.page %}; {{ v.file }}, {{ v.page }}-sah.: «{{ v.source_text }}»{% endif %}{% if v.reason %}; {{ v.reason }}{% endif %}{% for f in v.flags %}; ⚑ {{ f }}{% endfor %}]</span>{% else %}—{% endif %}{% endmacro %}
+{% block content %}
+{% set fin = sheet.finalized %}
+<div class="noprint row" style="justify-content:space-between;margin-bottom:10px">
+  <div>{% if not fin %}<span class="badge not_run">Qoralama — ish hali yakunlanmagan</span>{% endif %}</div>
+  <div><button onclick="window.print()">Chop etish</button> <a class="btn secondary" href="/jobs/{{ job.id }}/sheet.json">JSON yuklab olish</a></div>
+</div>
+<div class="card">
+<h1>Infratuzilma yig'imi hisob varaqasi {% if not fin %}(QORALAMA){% endif %}</h1>
+<p>Ish №{{ sheet.job.id }}: <b>{{ sheet.job.title }}</b>. Yuklagan: {{ sheet.job.created_by }}, {{ sheet.job.created }}.
+{% if fin %}Yakunlagan: <b>{{ fin.by }}</b>, {{ fin.at }}.{% endif %}<br>Asos: {{ sheet.legal_basis }}.</p>
+
+<h2>1. Yig'im hisobi</h2>
+{% set r = sheet.fee.result %}
+{% if r %}
+<div class="formula">Ti = {{ r.formula }}</div>
+{% if r.floor_applied %}<p class="flag">Koeffitsiyentlar ko'paytmasi {{ r.multiplier_raw }} — 0,01 dan kichik, shuning uchun 0,01 olindi.</p>{% endif %}
+<table style="max-width:620px;margin-top:6px">
+  <tr><td>Hisob hajmi (Hb + Hyu) − (Ha + Ht + Hu)</td><td class="n">{{ r.chargeable_volume | money }} m³</td></tr>
+  <tr><td>BHM</td><td class="n">{{ sheet.fee.coefficients.bhm | money }} so'm</td></tr>
+  <tr><td><b>Yig'im</b></td><td class="n"><b>{{ r.fee | money }} so'm</b></td></tr>
+  <tr><td>20% oldindan to'lov</td><td class="n">{{ r.advance_20 | money }} so'm</td></tr>
+  <tr><td>Qolgan 80%</td><td class="n">{{ r.remainder_80 | money }} so'm</td></tr>
+</table>
+{% else %}<p class="flag">Hisoblanmagan: tasdiqlanmagan hajmlar — {{ sheet.fee.missing | join(', ') }}.</p>{% endif %}
+<h3>Koeffitsiyentlar (xodim tanlagan)</h3>
+<table>
+  {% for g, name in (('kt', 'Kt'), ('ko', 'Ko'), ('kz', 'Kz'), ('kj', 'Kj')) %}<tr><td>{{ name }}</td><td class="n">{{ sheet.fee.coefficients[g] | num }}</td><td>{{ sheet.fee.options[g] }}</td></tr>{% endfor %}
+  <tr><td>Kkengash</td><td class="n">{{ sheet.fee.coefficients.k_council | num }}</td><td>Kengash koeffitsiyenti (0,01–1,5)</td></tr>
+</table>
+{% if sheet.fee.industrial %}<p class="small">Sanoat binosi: har qavatning 3 m dan yuqori qismi hajmi jami {{ sheet.fee.industrial.total | num }} m³ (ma'lumot uchun; avtomatik ayirilmagan).</p>{% endif %}
+
+<h2>2. Hajmlar</h2>
+<table>
+  <tr><th>Belgi</th><th>Ma'nosi</th><th class="n">Taklif, m³</th><th class="n">Qabul qilingan, m³</th><th>Qaror</th><th>Tarkibi / formula</th></tr>
+  {% for code, v in sheet.volumes.items() %}
+  <tr><td><b>{{ code }}</b></td><td>{{ v.label }}</td><td class="n">{{ v.proposal | num if v.proposal is not none else '—' }}</td>
+    <td class="n">{{ v.decision.value | num if v.decision else '—' }}</td>
+    <td>{% if v.decision %}{{ 'tasdiqlangan' if v.decision.status == 'confirmed' else "o'zgartirilgan" }}: {{ v.decision.user }}, {{ v.decision.time }}{% if v.decision.reason %}<br>Sabab: {{ v.decision.reason }}{% endif %}{% else %}tasdiqlanmagan{% endif %}</td>
+    <td class="small">{{ v.formula }}{% for n in v.notes %}<br>• {{ n }}{% endfor %}</td></tr>
+  {% endfor %}
+</table>
+{% if sheet.permitted_floors is not none %}<p class="small">Ruxsat etilgan qavatlar soni (xodim kiritgan): {{ sheet.permitted_floors }}.</p>{% endif %}
+<h3>Xonalar va maydon qatorlari</h3>
+<table>
+  <tr><th>Nomi</th><th>Sath</th><th class="n">Maydon, m²</th><th>Toifa</th><th>Hajm</th><th>Kiradi</th><th>Manba</th></tr>
+  {% for c in sheet.components %}
+  <tr><td>{{ c.name }}</td><td>{{ c.level_text or '—' }}</td><td class="n">{{ c.area | num }}</td>
+    <td>{{ c.category if c.category != 'other' else 'boshqa' }}{% if c.needs_confirmation %} (tasdiqlanmagan taklif){% endif %}</td>
+    <td class="small">{{ c.formula }}{% if c.override %}<br>✎ {{ c.override.user }}, {{ c.override.time }}: {{ c.override.reason }}{% endif %}</td>
+    <td>{{ 'ha' if c.included else "yo'q" }}</td><td class="small">{{ c.file }}, {{ c.page }}-sah.: «{{ c.source_text }}»</td></tr>
+  {% endfor %}
+</table>
+
+<h2>3. Hujjatlardan o'qilgan qiymatlar va manbalari</h2>
+<p class="small">Bino: {{ sheet.building.note }}.</p>
+<table>
+  <tr><th>Maydon</th><th>Loyiha</th><th>Xulosa</th><th>Tekshiruv</th></tr>
+  {% for row in sheet['values'] %}<tr><td>{{ row.label }}</td><td>{{ val(row.project) }}</td><td>{{ val(row.conclusion) }}</td>
+    <td>{% if row.check %}{{ CHECK_LABELS[row.check.status] }}{% endif %}{% if row.agreement_project or row.agreement_conclusion %}<div class="small">2-model: {{ AGREEMENT[row.agreement_project] if row.agreement_project else '' }} {{ AGREEMENT[row.agreement_conclusion] if row.agreement_conclusion else '' }}</div>{% endif %}</td></tr>{% endfor %}
+</table>
+
+<h2>4. Tekshiruvlar natijasi</h2>
+<table>
+  <tr><th>Tekshiruv</th><th>Natija</th><th>Tafsilot</th></tr>
+  {% for c in sheet.checks %}<tr><td>{{ c.name }}</td><td>{{ CHECK_LABELS[c.status] }}</td><td class="small">{{ c.detail }}</td></tr>{% endfor %}
+</table>
+{% if sheet.warnings %}<h3>Ogohlantirishlar</h3><ul class="small">{% for w in sheet.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+
+<h2>5. Kim nimani o'zgartirgan (audit jurnali)</h2>
+<table>
+  <tr><th>Vaqt</th><th>Xodim</th><th>Amal</th><th>Obyekt</th><th>Eski</th><th>Yangi</th><th>Sabab</th></tr>
+  {% for a in sheet.audit %}<tr class="small"><td>{{ a.time }}</td><td>{{ a.user }}</td><td>{{ a.action }}</td><td>{{ a.target }}</td><td>{{ a.old }}</td><td>{{ a.new }}</td><td>{{ a.reason }}</td></tr>{% endfor %}
+</table>
+
+<h2>6. Texnik ma'lumot</h2>
+<table>
+  <tr><th>Hujjat</th><th>Fayl</th><th class="n">Sahifalar</th><th>SHA-256</th></tr>
+  {% for f in sheet.files %}<tr class="small"><td>{{ 'loyiha' if f.role == 'project' else 'xulosa' }}</td><td>{{ f.name }}</td><td class="n">{{ f.pages }}</td><td>{{ f.sha256 }}</td></tr>{% endfor %}
+</table>
+<p class="small">Modellar: {% for k, m in sheet.models.items() %}{{ '1-model' if k == 'model1' else '2-model' }} — {{ m.name }}, vLLM {{ m.vllm_version }}{{ '; ' if not loop.last }}{% endfor %}.
+So'rov matni versiyasi: {{ sheet.prompt_version }}. So'rovlar soni: {{ sheet.requests | length }}.<br>
+So'rov matni xeshlari (SHA-256): {% for h in sheet.prompt_hashes %}{{ h }}{{ ', ' if not loop.last }}{% endfor %}</p>
+<p class="small muted">Hajmlarni hujjatdan til modeli o'qigan, har bir qiymat manba parchasi bilan kod tomonidan tekshirilgan va xodim tomonidan tasdiqlangan. Koeffitsiyentlarni xodim tanlagan; hisobni kod (Decimal) bajargan.</p>
+</div>
+{% endblock %}
