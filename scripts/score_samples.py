@@ -7,6 +7,8 @@ For every etalon row the system's answer is classified as:
   not_found    - the system has no value
   out_of_scope - the system does not read this kind of field at all
   partial      - (addresses only) an accepted address that covers part of the etalon's address line
+  flagged      - accepted and different from the etalon, but displayed with a contradiction flag
+                 (the document states the value differently in two places)
 Fields absent from the etalon are not scored. Only this script reads the etalon files.
 
 Detailed results (they contain document content) go to <out>/<model>/score.json, which is not
@@ -112,6 +114,8 @@ def classify_value(field: str, value: dict | None, etalon: str) -> str:
         return "not_found"
     equal = value_equal(field, value, etalon)
     if value["status"] == verify.ACCEPTED:
+        if not equal and any(str(f).startswith("ziddiyat") for f in value.get("flags") or []):
+            return "flagged"   # accepted, but shown with a "the document contradicts itself" flag
         return "correct" if equal else "silent_error"
     if value["status"] == verify.CONFLICT and equal:
         return "caught"  # the right value is among the variants; the system refused to pick one
@@ -231,6 +235,71 @@ def score_model(model: str, samples: Path, out: Path) -> dict:
     return summary
 
 
+def score_hb(model: str, samples: Path, out: Path) -> dict:
+    """Per-building Hb (etalon.csv): the project volume and the conclusion volume of every building,
+    taken from the Hb rows the assessment builds. A building whose conclusion only refers to another
+    one must have no volume of its own (the reference is shown, staff decides)."""
+    from feecalc import pipeline
+
+    rows = list(csv.DictReader(open(samples / "etalon.csv", encoding="utf-8-sig")))
+    contract = {r["id"]: r for r in csv.DictReader(open(samples / "shartnoma.csv", encoding="utf-8-sig"))}
+    details: list[dict] = []
+    totals: dict[str, dict] = {}
+    for sample_id in sorted({r["id"] for r in rows}):
+        res = json.loads((out / model / f"{sample_id}.json").read_text(encoding="utf-8"))
+        if res.get("error"):
+            details.extend({"id": sample_id, "building": r["bino"], "project": "job_failed", "conclusion": "job_failed"}
+                           for r in rows if r["id"] == sample_id)
+            continue
+        result = {"project": {"model1": res["project"]} if res["project"] else {},
+                  "conclusion": {"model1": res["conclusion"]}, "category_suggestions": {}}
+        view = pipeline.assess(result)
+        hb = view["hb_rows"]
+        uses: Counter[int] = Counter()
+        for r in (x for x in rows if x["id"] == sample_id):
+            wanted = tokens(re.sub(r", jadvalning .*", "", r["bino"]))
+
+            def similarity(h: dict) -> float:
+                return max(len(wanted & t) / max(1, len(wanted | t))
+                           for t in (tokens(h["name"]), tokens(h["project_name"])))
+
+            scored = sorted(((similarity(h), -i) for i, h in enumerate(hb)), reverse=True)
+            index = -scored[0][1] if scored and scored[0][0] >= 0.2 else None
+            # one system row may stand for several identical buildings of the etalon (count > 1)
+            if index is not None and uses[index] >= int(Decimal(hb[index]["count"])):
+                index = None
+            row = hb[index] if index is not None else None
+            if index is not None:
+                uses[index] += 1
+            d = {"id": sample_id, "building": r["bino"], "project": "not_scored", "conclusion": "not_scored"}
+            if r["hb_loyiha"]:
+                d["project"] = classify_value("volume", row["project"] if row else None, r["hb_loyiha"])
+            if r["hb_xulosa"]:
+                cv = row["conclusion"] if row else None
+                basis = r["hb_xulosa_asosi"]
+                if basis.startswith("havola"):
+                    shown = bool(row and row["reference"] and row["reference"]["status"] == verify.ACCEPTED)
+                    filled = bool(row and row["volume"] is not None)
+                    d["conclusion"] = "silent_error" if filled else ("correct" if shown else "not_found")
+                elif basis.startswith("hisoblangan"):
+                    unit = Decimal(cv["number"]) if cv and cv["status"] == verify.ACCEPTED and cv["number"] else None
+                    if unit is None:
+                        d["conclusion"] = "not_found" if cv is None or cv["status"] == verify.NOT_FOUND else "caught"
+                    else:
+                        d["conclusion"] = "correct" if unit * Decimal(row["count"]) == Decimal(r["hb_xulosa"]) else "silent_error"
+                else:
+                    d["conclusion"] = classify_value("volume", cv, r["hb_xulosa"])
+            details.append(d)
+        totals[sample_id] = {"hb_proposal": view["volumes"]["Hb"]["proposal"],
+                             "hb_complete": view["volumes"]["Hb"]["complete"],
+                             "hb_rows": len(hb), "hb_in_contract": (contract.get(sample_id) or {}).get("hb")}
+    summary = {"model": model, "project": dict(Counter(d["project"] for d in details)),
+               "conclusion": dict(Counter(d["conclusion"] for d in details)), "by_sample": totals}
+    (out / model / "score_hb.json").write_text(json.dumps({"summary": summary, "details": details},
+                                                          ensure_ascii=False, indent=1), encoding="utf-8")
+    return summary
+
+
 def score_pair(first: str, second: str, out: Path) -> dict:
     """The primary model checked by the second one, as in the full system: a value the primary
     model accepted counts as flagged when the second model did not accept the same value."""
@@ -273,6 +342,13 @@ def main() -> None:
             print(f"   SILENT ERROR: {e}")
         for sample_id, e in s["failed_samples"].items():
             print(f"   FAILED {sample_id}: {e}")
+        hb = score_hb(model, arg.samples, arg.out)
+        (arg.summary / f"sample_score_hb_{model}.json").write_text(json.dumps(hb, ensure_ascii=False, indent=1),
+                                                                    encoding="utf-8")
+        print(f"   Hb per building — project: {hb['project']}; conclusion: {hb['conclusion']}")
+        for sample_id, t in hb["by_sample"].items():
+            print(f"   Hb {sample_id}: proposal {t['hb_proposal']} (complete: {t['hb_complete']}, "
+                  f"{t['hb_rows']} rows); contract used {t['hb_in_contract']}")
     if len(arg.models) >= 2:
         for first, second in ((arg.models[0], arg.models[1]), (arg.models[1], arg.models[0])):
             pair = score_pair(first, second, arg.out)

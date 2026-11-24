@@ -73,6 +73,15 @@ def model2() -> Model:
                  {"chat_template_kwargs": {"enable_thinking": False}})
 
 
+def model3() -> Model:
+    """A further candidate used only for comparison runs (scripts); the web app uses models 1 and 2."""
+    return Model("model3", os.environ.get("FEECALC_MODEL3_NAME", "granite-4.1-30b"),
+                 os.environ.get("FEECALC_MODEL3_URL", "http://127.0.0.1:8003/v1"))
+
+
+MODELS = {"model1": model1, "model2": model2, "model3": model3}
+
+
 def port_open(m: Model) -> bool:
     """Is the server listening (check without exceptions)."""
     host, port = m.host_port()
@@ -218,6 +227,6 @@ if __name__ == "__main__":
     # python -m feecalc.llm canary model1|model2  -> exit code 0 means healthy
     action, which = sys.argv[1], sys.argv[2]
     assert action == "canary", action
-    chosen = model1() if which == "model1" else model2()
+    chosen = MODELS[which]()
     result = canary(chosen, Path(os.environ.get("FEECALC_RAW_DIR", "data/llm_raw")) / "canary")
     print(json.dumps({"ok": True, "duration_s": result.duration_s, "tokens": result.completion_tokens}))

@@ -40,12 +40,12 @@ def read_one(m: llm.Model, samples: Path, out: Path, sample_id: str) -> dict:
 
 def main() -> None:
     a = argparse.ArgumentParser()
-    a.add_argument("model", choices=["model1", "model2"])
+    a.add_argument("model", choices=sorted(llm.MODELS))
     a.add_argument("--samples", type=Path, default=Path.home() / "samples")
     a.add_argument("--out", type=Path, default=Path("data/eval"))
     a.add_argument("--only", nargs="*", default=None)
     arg = a.parse_args()
-    m = llm.model1() if arg.model == "model1" else llm.model2()
+    m = llm.MODELS[arg.model]()
     out = arg.out / arg.model
     out.mkdir(parents=True, exist_ok=True)
     ids = sorted(p.name.split("_")[0] for p in arg.samples.glob("*_xulosa.pdf"))

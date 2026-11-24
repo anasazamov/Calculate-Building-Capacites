@@ -90,12 +90,12 @@ def marker_lines(model_key: str) -> int:
 
 def main() -> None:
     a = argparse.ArgumentParser()
-    a.add_argument("model", choices=["model1", "model2"])
+    a.add_argument("model", choices=sorted(llm.MODELS))
     a.add_argument("--launch", type=Path, required=True)
     a.add_argument("--interval", type=float, default=60.0)
     a.add_argument("--incidents", type=Path, default=Path("logs/incidents.jsonl"))
     arg = a.parse_args()
-    m = llm.model1() if arg.model == "model1" else llm.model2()
+    m = llm.MODELS[arg.model]()
     server_log = Path("logs") / f"vllm_{arg.model}.log"
     server_log.parent.mkdir(parents=True, exist_ok=True)
     if llm.port_open(m):

@@ -72,7 +72,7 @@ def summary(name: str, results: list[dict], wall: float) -> dict:
 
 def main() -> None:
     a = argparse.ArgumentParser()
-    a.add_argument("model", choices=["model1", "model2"])
+    a.add_argument("model", choices=sorted(llm.MODELS))
     a.add_argument("--sequential", type=int, default=50)
     a.add_argument("--parallel", type=int, default=16)
     a.add_argument("--sampling", choices=["default", "card"], default="default")
@@ -80,7 +80,7 @@ def main() -> None:
     a.add_argument("--no-shape-in-prompt", action="store_true",
                    help="do not describe the response shape in the prompt (reproduces the failure)")
     arg = a.parse_args()
-    m = llm.model1() if arg.model == "model1" else llm.model2()
+    m = llm.MODELS[arg.model]()
     sampling = llm.SAMPLING_DEFAULT if arg.sampling == "default" else llm.SAMPLING_CARD
     shape = not arg.no_shape_in_prompt
 
