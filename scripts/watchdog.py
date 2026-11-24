@@ -2,7 +2,7 @@
 
 Known failure (seen with Qwen3.6-27B on vLLM): the output collapses to "!!!!" and stays that
 way for every later request; the server does not recover by itself. Two signals trigger a
-restart: (1) the canary fails twice in a row, (2) the client wrote a new line to the
+restart: (1) the canary fails three times in a row, (2) the client wrote a new line to the
 degenerate-output marker file (only for the "!!!!" symptom; an ordinary repetition loop in one
 response fails that request but does not restart the server). Every event is appended to
 logs/incidents.jsonl.
@@ -25,8 +25,8 @@ from pathlib import Path
 from feecalc import llm
 
 STARTUP_TIMEOUT_S = 1200
-CANARY_TIMEOUT_S = 120
-FAILURES_BEFORE_RESTART = 2
+CANARY_TIMEOUT_S = 180     # under full load the canary may wait in the server's queue
+FAILURES_BEFORE_RESTART = 3
 
 
 def log(path: Path, event: str, **fields: object) -> None:

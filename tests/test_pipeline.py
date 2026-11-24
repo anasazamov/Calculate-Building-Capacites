@@ -102,3 +102,47 @@ def test_model_server_down_is_an_error(sample_dir: Path, tmp_path: Path, monkeyp
     monkeypatch.setattr(llm, "server_ready", lambda m: False)
     with pytest.raises(llm.ModelError, match="tayyor emas"):
         pipeline.run_extraction(tmp_path, [sample_dir / "demo_project.pdf"], sample_dir / "demo_conclusion.pdf")
+
+
+def _v(number: str | None, **extra) -> dict:
+    return {"value": number, "number": number, "status": verify.ACCEPTED if number else verify.NOT_FOUND,
+            "file": "c.pdf", "page": 2, "source_text": number, "reason": "", "flags": [], **extra}
+
+
+def test_volume_lower_bound_uses_named_storeys_when_count_is_missing():
+    # "yerto'lada h=2,6 va 1,2,3 qavatlarda h=3,0": 222.6 x (2.6 + 3 x 3.0) = 2582.16 > 2226
+    building = {"floors": _v(None), "floor_heights": [_v("2.6", level="yerto’lada"), _v("3.0", level="1,2,3 qavatlarda"),
+                                                      _v("0.45", level="Poydevor")]}
+    heights, how = pipeline._building_heights(building)
+    assert sum(heights) == D("11.6") and "nomlangan" in how
+    check = verify.check_volume_lower_bound(D("2226.0"), D("222.6"), heights)
+    assert check.status == verify.WARNING and "2582.16" in check.detail
+
+
+def test_volume_lower_bound_adds_basement_and_lowest_attic():
+    # basement + 4 storeys at 3.00 and an attic of at least 1.80: 645 x 16.8 = 10836 > 10640
+    building = {"floors": _v("4"), "floor_heights": [
+        _v("3.00", level="Yerto`la qavati va qavatlarning ichki balandligi"),
+        _v("1.80", level="Mansarda qavatida eng past"), _v("2.40", level="Mansarda qavatida eng yuqori")]}
+    heights, _ = pipeline._building_heights(building)
+    assert sum(heights) == D("16.80")
+    assert verify.check_volume_lower_bound(D("10640.00"), D("645.0"), heights).status == verify.WARNING
+
+
+def _site(kind: str, number: str) -> dict:
+    return {**_v(number), "kind": kind, "name": kind}
+
+
+def test_site_balance_checks():
+    site = [_site("total", "1400.0"), _site("built_up", "222.6"), _site("paving", "400.0"), _site("greenery", "449.76")]
+    balance, footprints = pipeline._site_checks("xulosa", "conclusion", site, [D("222.6")])
+    assert balance.status == verify.WARNING and "327.64" in balance.detail
+    assert footprints.status == verify.OK
+    # the same figures repeated on another sheet count once
+    again = site + [dict(x, page=8) for x in site]
+    assert pipeline._site_checks("loyiha", "project", again, [])[0].detail == balance.detail
+    # several figures of one kind (construction stages): the balance is left to staff
+    staged = [_site("total", "73531"), _site("built_up", "17345"), _site("built_up", "15690"), _site("paving", "12549")]
+    checks = pipeline._site_checks("xulosa", "conclusion", staged, [D("17347.9")])
+    assert checks[0].status == verify.NOT_RUN
+    assert checks[1].status == verify.WARNING and "2.9" in checks[1].detail      # 17347.9 vs 17345

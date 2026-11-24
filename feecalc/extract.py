@@ -20,9 +20,9 @@ from .ingest import Page, group_lines, stamp_text, structured_text
 CHUNK_CHARS = 9000            # text limit for one project request
 CONCLUSION_CHARS = 36000      # a conclusion up to this size goes in one request
 MAX_CHUNKS_PER_PAGE = 8
-PARALLEL = 8
+PARALLEL = 6                  # below the server's --max-num-seqs 8, so the watchdog canary always gets a slot
 MAX_TOKENS = {"conclusion": 12000, "tep": 6144, "rooms": 6144, "sheet": 64, "category": 2048}
-PROMPT_VERSION = "2026-11-24.6"
+PROMPT_VERSION = "2026-11-24.7"
 
 # Length bounds make a runaway string (a repetition loop inside a value) structurally impossible.
 _S = {"type": ["string", "null"], "maxLength": 250}
@@ -112,7 +112,7 @@ Strict rules:
 1. Copy only values that are explicitly written in the given text. Never calculate, sum, multiply, guess, convert or fill in.
 2. "value" is a string. For a number it is the number alone, exactly as written in the document (e.g. "36036", "9410.0", "600,3", "25 457", "-3.200"); do not add units, comparison signs or comments.
 3. "unit" is the unit written next to that value, exactly as written (e.g. "м3", "m2", "m²", "м"); null if no unit is written.
-4. "source_text" is one contiguous fragment copied character by character from the text (up to 150 characters) that contains the value itself, together with its label when the label is next to it. It may run over a line break when the sentence continues on the next line. For a number the fragment must include its label or, in a table, the whole row with the row's name: a fragment made of numbers only is rejected. Do not alter it, skip words in the middle, translate or reorder it. The " | " column separator may be kept.
+4. "source_text" is one contiguous fragment copied character by character from the text (up to 150 characters) that contains the value itself, together with its label when the label is next to it. It may run over a line break when the sentence continues on the next line. For a number the fragment must include its label or, in a table, the whole row with the row's name: a fragment made of numbers only is rejected. Do not alter it, skip words in the middle, translate or reorder it. Quotation marks that are part of the text are copied too (escaped as \\" in JSON); do not stop at them. The " | " column separator may be kept.
 5. If a value is not in the text: "value", "unit" and "source_text" are all null. An empty list is []. Most documents lack some fields: null is the expected answer for them.
 6. Reply with JSON only, in the shape below. All keys are required."""
 

@@ -1,0 +1,49 @@
+{
+ "model": "qwen3.8-27b",
+ "vllm": "0.34.0",
+ "levels": [
+  {
+   "parallel": 1,
+   "wall_s": 62.7,
+   "statuses": {
+    "ok": 1
+   },
+   "completion_tokens": 2333,
+   "tokens_per_s_total": 37.2,
+   "request_s_min_max": [
+    62.67,
+    62.67
+   ],
+   "distinct_value_sets": 1
+  },
+  {
+   "parallel": 8,
+   "wall_s": 58.8,
+   "statuses": {
+    "ok": 8
+   },
+   "completion_tokens": 18674,
+   "tokens_per_s_total": 317.4,
+   "request_s_min_max": [
+    58.72,
+    58.82
+   ],
+   "distinct_value_sets": 1
+  },
+  {
+   "parallel": 16,
+   "wall_s": 117.6,
+   "statuses": {
+    "ok": 16
+   },
+   "completion_tokens": 37360,
+   "tokens_per_s_total": 317.7,
+   "request_s_min_max": [
+    59.36,
+    117.57
+   ],
+   "distinct_value_sets": 1
+  }
+ ],
+ "canary_after": "ok"
+}

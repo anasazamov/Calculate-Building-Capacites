@@ -25,8 +25,9 @@ _TYPOGRAPHY = str.maketrans({"−": "-", "–": "-", "—": "-", "‒": "-", "�
 
 def normalize(text: str) -> str:
     """For verbatim comparison: whitespace and column separators collapse to one space,
-    dash and quote variants map to one character. Letters and digits are untouched."""
-    return _SPACES.sub(" ", text.translate(_TYPOGRAPHY)).strip()
+    dash variants map to one character and every kind of quotation mark or apostrophe to another
+    (models often change the quote style when copying). Letters and digits are untouched."""
+    return _SPACES.sub(" ", text.translate(_TYPOGRAPHY).replace('"', "'")).strip()
 
 
 def normalize_joined(text: str) -> str:
@@ -323,14 +324,16 @@ def plan_dimensions(plan_size: str | None) -> list[Decimal]:
 
 
 def check_plan_vs_footprint(code: str, name: str, plan_size: str | None, footprint: Decimal | None) -> Check:
-    """The bounding rectangle of the plan cannot be smaller than the built-up area."""
+    """The bounding rectangle of the plan cannot be much smaller than the built-up area."""
     dims = plan_dimensions(plan_size)
     if footprint is None or len(dims) != 2:
         return Check(code, name, NOT_RUN, "tarx o'lchami (ikki son) yoki qurilish maydoni yo'q")
     area = dims[0] * dims[1]
     expr = f"{fmt_num(dims[0])} × {fmt_num(dims[1])} = {fmt_num(area)} m²; qurilish maydoni {fmt_num(footprint)} m²"
-    if area < footprint:
-        return Check(code, name, WARNING, expr + " — tarx o'lchami qurilish maydonidan kichik")
+    # Plan sizes are usually given between axes, so the product may be a little below the built-up
+    # area (wall thickness, porches). Only a clear gap is reported.
+    if area < footprint * Decimal("0.8"):
+        return Check(code, name, WARNING, expr + " — tarx o'lchami qurilish maydoniga mos emas")
     return Check(code, name, OK, expr)
 
 

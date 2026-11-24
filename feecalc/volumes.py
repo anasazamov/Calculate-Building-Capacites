@@ -25,20 +25,24 @@ VOLUME_LABELS: dict[str, str] = {
     "Hu": "Umumiy foydalanishdagi qism hajmi",
 }
 
-_BASEMENT = re.compile(r"подвал|цокол|техподпол|yerto['ʼ’`]?la|ертўла|podval|sokol", re.I)
-_TECHNICAL = re.compile(r"\bтех|чердак|кровл|texnik|техник|cherdak", re.I)
-_FLOOR_WORD = r"(?:этаж\w*|qavat\w*|қават\w*)"
-_RANGE = re.compile(r"(\d+)\s*[-–—]\s*(\d+)\s*[-–]?\s*" + _FLOOR_WORD, re.I)
-_SINGLE = re.compile(r"(\d+)\s*[-–]?\s*(?:й|го|ой|ый|chi|nchi|инчи|чи)?\s*[-–]?\s*" + _FLOOR_WORD
-                     + r"|" + _FLOOR_WORD + r"\s*(\d+)", re.I)
-_LIST = re.compile(r"(\d+(?:\s*,\s*\d+)+)\s*[-–]?\s*" + _FLOOR_WORD, re.I)
-_TYPICAL = re.compile(r"типов|этаж|qavat|қават", re.I)
-_MANSARD = re.compile(r"мансард|mansard", re.I)
+# Level descriptions are matched on their transliterated form (Cyrillic -> Latin, apostrophes dropped),
+# so "подвал", "yerto‘la" and "yerto'la" all reduce to the same spelling.
+_BASEMENT = re.compile(r"podval|tsokol|texpodpol|yertola|ertola|sokol")
+_TECHNICAL = re.compile(r"\btex|cherdak|krovl|chordoq")
+_MANSARD = re.compile(r"mansard")
+_FOUNDATION = re.compile(r"poydevor|fundament|tsokol qism")
+_FLOOR_WORD = r"(?:etaj\w*|qavat\w*)"
+_RANGE = re.compile(r"(\d+)\s*[-–—]\s*(\d+)\s*[-–]?\s*(?:go\s+)?" + _FLOOR_WORD)
+_PAIR = re.compile(r"(\d+)\s*-?\s*(?:chi|nchi|inchi)?\s+va\s+(\d+)\s*-?\s*" + _FLOOR_WORD)
+_LIST = re.compile(r"(\d+(?:\s*,\s*\d+)+)\s*[-–]?\s*" + _FLOOR_WORD)
+_SINGLE = re.compile(r"(\d+)\s*[-–]?\s*(?:y|go|oy|iy|chi|nchi|inchi)?\s*[-–]?\s*" + _FLOOR_WORD
+                     + r"|" + _FLOOR_WORD + r"\s*(\d+)")
+_TYPICAL = re.compile(r"tipov|etaj|qavat|xona|pomeshen|komnat")
 
 
 @dataclass(frozen=True)
 class Level:
-    kind: str                 # "basement" | "floor" | "range" | "technical" | "generic" | "unknown"
+    kind: str                 # "basement" | "floor" | "range" | "technical" | "foundation" | "generic" | "unknown"
     first: int | None = None
     last: int | None = None
 
@@ -50,31 +54,53 @@ class Level:
         return []
 
 
-def parse_level(text: str | None, mark: str | None = None) -> Level:
-    """Understand a level description such as "Подвал", "1-этаж", "2–16 этажи", "+52.420"."""
-    t = (text or "").replace("ё", "е")
-    if _BASEMENT.search(t):
-        return Level("basement")
-    if _MANSARD.search(t):
-        return Level("technical")  # attic storey: never taken as a typical floor height
+def _floor_level(t: str) -> Level | None:
     m = _LIST.search(t)
     if m:
         numbers = [int(x) for x in re.findall(r"\d+", m.group(1))]
         return Level("range", min(numbers), max(numbers))
-    m = _RANGE.search(t)
-    if m and int(m.group(1)) < int(m.group(2)):
-        return Level("range", int(m.group(1)), int(m.group(2)))
+    for pattern in (_RANGE, _PAIR):
+        m = pattern.search(t)
+        if m and int(m.group(1)) < int(m.group(2)):
+            return Level("range", int(m.group(1)), int(m.group(2)))
     m = _SINGLE.search(t)
     if m:
         return Level("floor", int(m.group(1) or m.group(2)))
-    if _TECHNICAL.search(t):
-        return Level("technical")
-    number = verify.parse_number(mark) if mark else None
-    if number is not None and number < 0:
-        return Level("basement")
-    if _TYPICAL.search(t):
-        return Level("generic")
-    return Level("unknown")
+    return None
+
+
+def parse_levels(text: str | None, mark: str | None = None) -> list[Level]:
+    """Every level a description refers to. "Yerto'la qavati va qavatlarning balandligi" names two:
+    the basement and the typical floors."""
+    t = verify.transliterate(text or "")
+    if _FOUNDATION.search(t):
+        return [Level("foundation")]
+    if _MANSARD.search(t):
+        return [Level("technical")]  # attic storey: never taken as a typical floor height
+    levels: list[Level] = []
+    if _BASEMENT.search(t):
+        levels.append(Level("basement"))
+        t = re.sub(r"(?:" + _BASEMENT.pattern + r")\w*(?:\s+qavat\w*|\s+etaj\w*)?", " ", t)
+    floor = _floor_level(t)
+    if floor:
+        levels.append(floor)
+    elif levels:
+        if _TYPICAL.search(t):
+            levels.append(Level("generic"))
+    elif _TECHNICAL.search(t):
+        levels.append(Level("technical"))
+    else:
+        number = verify.parse_number(mark) if mark else None
+        if number is not None and number < 0:
+            levels.append(Level("basement"))
+        elif _TYPICAL.search(t):
+            levels.append(Level("generic"))
+    return levels or [Level("unknown")]
+
+
+def parse_level(text: str | None, mark: str | None = None) -> Level:
+    """The (first) level of a description such as "Подвал", "1-этаж", "2–16 этажи", "+52.420"."""
+    return parse_levels(text, mark)[0]
 
 
 def _accepted_number(v: dict | None) -> Decimal | None:
@@ -97,7 +123,7 @@ def collect_heights(project_heights: list[dict], conclusion_heights: list[dict])
         for h in items:
             value = _accepted_number(h)
             if value is not None and value > 0:
-                out.append(Height(parse_level(h.get("level")), value, origin, h.get("level") or ""))
+                out.extend(Height(level, value, origin, h.get("level") or "") for level in parse_levels(h.get("level")))
     return out
 
 
@@ -336,8 +362,14 @@ def hb_rows(project: list[dict], conclusion: list[dict], pairs: list[dict], over
             formula = f"loyihada yozilgan hajm {fmt_num(p_num)} m³ (xulosada bu bino hajmi yo'q)"
         elif c_num is not None:
             proposal, computed = c_num * count, count > 1
+            if pv is None:
+                why = "loyiha berilmagan"
+            elif pv["status"] == verify.NOT_FOUND:
+                why = "loyihada bu bino hajmi topilmadi"
+            else:
+                why = f"loyihadagi hajm qabul qilinmagan ({verify.STATUS_LABELS[pv['status']]})"
             formula = (f"{fmt_num(count)} dona × {fmt_num(c_num)} = {fmt_num(proposal)} m³ (hisoblangan: soni × birlik)"
-                       if count > 1 else f"xulosada yozilgan hajm {fmt_num(c_num)} m³") + "; loyiha berilmagan"
+                       if count > 1 else f"xulosada yozilgan hajm {fmt_num(c_num)} m³") + "; " + why
         elif reference.get("status") == verify.ACCEPTED:
             formula = f"hajm yozilmagan, faqat havola: «{reference['value']}» — qiymatni xodim kiritadi"
         else:

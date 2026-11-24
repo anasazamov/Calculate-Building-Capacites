@@ -206,3 +206,26 @@ def test_hyu():
     assert h["proposal"] == "8654.83" and "teng bo'lingan" in h["notes"][0]  # 34619.3 / 16 x 4
     assert volumes.hyu_volume(12, D("16"), [], None)["proposal"] is None
     assert volumes.hyu_volume(12, None, comps, None)["proposal"] is None
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("yerto‘la qavati", [Level("basement")]),
+    ("Yerto`la qavati va qavatlarning poldan shiftgacha bo‘lgan ichki balandligi", [Level("basement"), Level("generic")]),
+    ("1-çi va 2-qavatlar içki xonalarining balandligi", [Level("range", 1, 2)]),
+    ("Poydevor balandligi", [Level("foundation")]),
+    ("xonalar balandligi poldan shiftgacha", [Level("generic")]),
+    ("1-5qavat", [Level("range", 1, 5)]),
+    ("План 2-16 го этажа на отм. +3.710м", [Level("range", 2, 16)]),
+    ("ichki qismi balandligi poldan metal ferma ostigacha", [Level("unknown")]),
+])
+def test_parse_levels_real_wordings(text, expected):
+    assert volumes.parse_levels(text) == expected
+
+
+def test_one_statement_can_give_two_heights():
+    hs = volumes.collect_heights([], [val("3.00", level="Yerto`la qavati va qavatlarning ichki balandligi")])
+    assert volumes.resolve_height(Level("basement"), hs)[0] == D("3.00")
+    assert volumes.resolve_height(Level("floor", 2), hs)[0] == D("3.00")
+    # the foundation height is never used as a storey height
+    hs = volumes.collect_heights([], [val("0.45", level="Poydevor balandligi")])
+    assert volumes.resolve_height(Level("floor", 1), hs)[0] is None

@@ -181,44 +181,67 @@ def _other_model_building(other: dict | None, building: dict | None) -> dict | N
 def _site_checks(doc_label: str, code: str, site: list[dict], footprints: list[Decimal | None]) -> list[verify.Check]:
     """Land-plot balance of one document: parts against the total, building footprints against "built-up"."""
     checks: list[verify.Check] = []
-    accepted = [x for x in site if x["status"] == verify.ACCEPTED and x["number"] is not None]
+    seen: set[tuple[str, Decimal]] = set()
+    accepted: list[dict] = []
+    for x in site:  # the same figure repeated on several sheets counts once
+        if x["status"] == verify.ACCEPTED and x["number"] is not None and (x["kind"], Decimal(x["number"])) not in seen:
+            seen.add((x["kind"], Decimal(x["number"])))
+            accepted.append(x)
     totals = [Decimal(x["number"]) for x in accepted if x["kind"] == "total"]
     parts = [x for x in accepted if x["kind"] != "total"]
+    kinds = [x["kind"] for x in parts]
     if len(totals) == 1 and parts:
-        s = sum((Decimal(x["number"]) for x in parts), Decimal(0))
-        expr = " + ".join(fmt_num(Decimal(x["number"])) for x in parts) + f" = {fmt_num(s)}; hudud maydoni {fmt_num(totals[0])}"
-        status = verify.OK if s == totals[0] else verify.WARNING
-        checks.append(verify.Check(f"site_balance_{code}", f"Hudud balansi ({doc_label})", status,
-                                   expr + ("" if status == verify.OK else f" — balans yopilmaydi (farq {fmt_num(totals[0] - s)})")))
+        name = f"Hudud balansi ({doc_label})"
+        if len(set(kinds)) < len(kinds):
+            checks.append(verify.Check(f"site_balance_{code}", name, verify.NOT_RUN,
+                                       "bir turdagi ko'rsatkich bir necha marta berilgan (bosqichlar yoki variantlar) — "
+                                       "balansni xodim tekshiradi"))
+        else:
+            s = sum((Decimal(x["number"]) for x in parts), Decimal(0))
+            expr = " + ".join(fmt_num(Decimal(x["number"])) for x in parts) + f" = {fmt_num(s)}; hudud maydoni {fmt_num(totals[0])}"
+            status = verify.OK if s == totals[0] else verify.WARNING
+            checks.append(verify.Check(f"site_balance_{code}", name, status,
+                                       expr + ("" if status == verify.OK else f" — balans yopilmaydi (farq {fmt_num(totals[0] - s)})")))
     built = [Decimal(x["number"]) for x in accepted if x["kind"] == "built_up"]
     known = [f for f in footprints if f is not None]
-    if len(built) == 1 and known and len(known) == len(footprints):
+    if built and known and len(known) == len(footprints):
         s = sum(known, Decimal(0))
-        status = verify.OK if s == built[0] else verify.WARNING
+        nearest = min(built, key=lambda b: abs(b - s))
+        status = verify.OK if s == nearest else verify.WARNING
         checks.append(verify.Check(f"site_footprints_{code}", f"Binolar qurilish maydonlari yig'indisi = hududdagi qurilish osti maydoni ({doc_label})",
-                                   status, f"binolar yig'indisi {fmt_num(s)}; hudud ko'rsatkichi {fmt_num(built[0])}"
-                                   + ("" if status == verify.OK else f"; farq {fmt_num(s - built[0])}")))
+                                   status, f"binolar yig'indisi {fmt_num(s)}; hudud ko'rsatkichi {fmt_num(nearest)}"
+                                   + ("" if status == verify.OK else f"; farq {fmt_num(s - nearest)}")))
     return checks
 
 
 def _building_heights(building: dict) -> tuple[list[Decimal], str]:
-    """Heights for the lower-bound check of one conclusion building: basement (if stated) + every storey."""
+    """Heights for the lower-bound check of one conclusion building: basement (if stated), every
+    storey, and the lowest attic height (if stated). When the storey count is not accepted, only
+    the storeys the height statements name explicitly ("1,2,3 qavatlarda h=3,0") are used."""
     heights = volumes.collect_heights([], building.get("floor_heights", []))
+    if not heights:
+        return [], "qavat balandliklari yo'q"
     floors = _num(building["floors"])
-    if floors is None or not heights:
-        return [], "qavatlar soni yoki qavat balandliklari yo'q"
+    named = sorted({f for h in heights for f in h.level.floors()})
+    numbers = list(range(1, int(floors) + 1)) if floors is not None else named
+    if not numbers:
+        return [], "qavatlar soni qabul qilinmagan va balandliklarda qavatlar ko'rsatilmagan"
     out: list[Decimal] = []
     parts: list[str] = []
     basement, _ = volumes.resolve_height(volumes.Level("basement"), heights)
     if basement is not None:
         out.append(basement)
         parts.append(f"yerto'la {fmt_num(basement)}")
-    for f in range(1, int(floors) + 1):
+    for f in numbers:
         h, _ = volumes.resolve_height(volumes.Level("floor", f), heights)
         if h is None:
             return [], f"{f}-qavat balandligi hujjatda aniqlanmadi"
         out.append(h)
-    parts.append(f"{int(floors)} qavat")
+    parts.append(f"{len(numbers)} qavat" + ("" if floors is not None else " (balandliklarda nomlangan)"))
+    attic = [h.value for h in heights if h.level.kind == "technical"]
+    if attic:
+        out.append(min(attic))
+        parts.append(f"mansarda/texnik (eng pasti) {fmt_num(min(attic))}")
     return out, " + ".join(parts)
 
 
@@ -338,7 +361,10 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
     if has_project:
         checks.extend(_site_checks("loyiha", "project", p1["site_areas"],
                                    [_num(b["footprint_area"]) for b in p1["buildings"]]))
-        for kind in ("total", "built_up", "paving", "greenery"):
+        # a project sheet for one building states that building's footprint, not the plot balance:
+        # plot figures are compared only when the project gives the plot total as well
+        project_has_total = any(x["kind"] == "total" and x["status"] == verify.ACCEPTED for x in p1["site_areas"])
+        for kind in (("total", "built_up", "paving", "greenery") if project_has_total else ()):
             a = [Decimal(x["number"]) for x in p1["site_areas"] if x["kind"] == kind and x["status"] == verify.ACCEPTED]
             b = [Decimal(x["number"]) for x in c1["site_areas"] if x["kind"] == kind and x["status"] == verify.ACCEPTED]
             if len(set(a)) == 1 and len(set(b)) == 1:
