@@ -5,13 +5,12 @@
   "correct": 6
  },
  "conclusion": {
-  "correct": 14,
-  "not_found": 1,
+  "correct": 15,
   "not_scored": 3
  },
  "by_sample": {
   "284459": {
-   "hb_proposal": "83362.09",
+   "hb_proposal": "124433.19",
    "hb_complete": true,
    "hb_rows": 3,
    "hb_in_contract": null

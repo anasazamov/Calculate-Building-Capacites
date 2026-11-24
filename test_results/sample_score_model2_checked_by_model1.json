@@ -2,10 +2,10 @@
  "primary": "model2",
  "second": "model1",
  "classes": {
-  "correct_confirmed": 197,
-  "caught": 9,
+  "correct_confirmed": 199,
+  "caught": 2,
   "out_of_scope": 10,
-  "correct_but_flagged": 1,
+  "correct_but_flagged": 6,
   "not_found": 3,
   "flagged": 1
  },

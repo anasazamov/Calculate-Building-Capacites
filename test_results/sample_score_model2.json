@@ -2,22 +2,21 @@
  "model": "model2",
  "rows": 221,
  "classes": {
-  "correct": 198,
-  "caught": 9,
+  "correct": 205,
+  "caught": 2,
   "out_of_scope": 10,
   "not_found": 3,
   "flagged": 1
  },
  "by_sample": {
   "284459": {
-   "correct": 69,
+   "correct": 71,
    "out_of_scope": 6,
-   "caught": 1,
-   "not_found": 3
+   "not_found": 2
   },
   "291405": {
    "correct": 17,
-   "caught": 1,
+   "not_found": 1,
    "flagged": 1
   },
   "298814": {
@@ -25,8 +24,8 @@
    "caught": 1
   },
   "302030": {
-   "correct": 44,
-   "caught": 6,
+   "correct": 49,
+   "caught": 1,
    "out_of_scope": 2
   },
   "302704": {
@@ -60,11 +59,10 @@
    "correct": 1
   },
   "loyiha:loyiha_shifri": {
-   "caught": 1
+   "correct": 1
   },
   "loyiha:manzil": {
-   "caught": 1,
-   "correct": 1
+   "correct": 2
   },
   "loyiha:manzil_umumiy_malumot_kocha": {
    "correct": 1
@@ -97,8 +95,7 @@
    "correct": 6
   },
   "loyiha:qurilish_maydoni": {
-   "caught": 1,
-   "correct": 5
+   "correct": 6
   },
   "loyiha:sath_belgisi_16_qavat": {
    "not_found": 1
@@ -107,20 +104,19 @@
    "not_found": 1
   },
   "loyiha:sath_belgisi_texnik": {
-   "not_found": 1
+   "correct": 1
   },
   "loyiha:sath_belgisi_yertola": {
    "correct": 1
   },
   "loyiha:soni": {
-   "caught": 1
+   "correct": 1
   },
   "loyiha:tarx_olchami": {
    "correct": 1
   },
   "loyiha:umumiy_maydon": {
-   "caught": 1,
-   "correct": 5
+   "correct": 6
   },
   "loyiha:xona_maydoni_lift_xolli": {
    "correct": 1
@@ -241,8 +237,8 @@
    "correct": 1
   },
   "xulosa:manzil": {
-   "correct": 3,
-   "caught": 2
+   "correct": 4,
+   "not_found": 1
   },
   "xulosa:murojaat_raqami": {
    "correct": 5
@@ -291,28 +287,28 @@
  "timing": {
   "284459": {
    "conclusion_s": 0.3,
-   "project_s": 718.3,
-   "total_s": 718.6
+   "project_s": 210.1,
+   "total_s": 210.4
   },
   "291405": {
-   "conclusion_s": 0.8,
-   "project_s": 173.5,
-   "total_s": 174.3
+   "conclusion_s": 0.4,
+   "project_s": 17.5,
+   "total_s": 18.0
   },
   "298814": {
-   "conclusion_s": 4.6,
+   "conclusion_s": 0.5,
    "project_s": 0.0,
-   "total_s": 4.6
+   "total_s": 0.5
   },
   "302030": {
-   "conclusion_s": 14.5,
-   "project_s": 335.0,
-   "total_s": 349.5
+   "conclusion_s": 0.9,
+   "project_s": 306.2,
+   "total_s": 307.1
   },
   "302704": {
-   "conclusion_s": 15.7,
+   "conclusion_s": 1.0,
    "project_s": 0.0,
-   "total_s": 15.7
+   "total_s": 1.0
   }
  }
 }

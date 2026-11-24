@@ -2,11 +2,11 @@
  "model": "model1",
  "rows": 221,
  "classes": {
-  "correct": 202,
+  "correct": 201,
   "caught": 6,
   "out_of_scope": 10,
   "not_found": 1,
-  "partial": 1,
+  "partial": 2,
   "flagged": 1
  },
  "by_sample": {
@@ -24,9 +24,9 @@
    "caught": 1
   },
   "302030": {
-   "correct": 44,
+   "correct": 43,
    "not_found": 1,
-   "partial": 1,
+   "partial": 2,
    "out_of_scope": 2,
    "caught": 4
   },
@@ -64,7 +64,8 @@
    "correct": 1
   },
   "loyiha:manzil": {
-   "correct": 2
+   "partial": 1,
+   "correct": 1
   },
   "loyiha:manzil_umumiy_malumot_kocha": {
    "correct": 1
@@ -94,12 +95,12 @@
    "correct": 2
   },
   "loyiha:qurilish_hajmi": {
-   "caught": 1,
-   "correct": 5
+   "correct": 5,
+   "caught": 1
   },
   "loyiha:qurilish_maydoni": {
-   "caught": 1,
-   "correct": 5
+   "correct": 5,
+   "caught": 1
   },
   "loyiha:sath_belgisi_16_qavat": {
    "correct": 1
@@ -120,8 +121,8 @@
    "correct": 1
   },
   "loyiha:umumiy_maydon": {
-   "caught": 1,
-   "correct": 5
+   "correct": 5,
+   "caught": 1
   },
   "loyiha:xona_maydoni_lift_xolli": {
    "correct": 1
@@ -292,29 +293,29 @@
  "failed_samples": {},
  "timing": {
   "284459": {
-   "conclusion_s": 0.4,
-   "project_s": 734.7,
-   "total_s": 735.1
+   "conclusion_s": 0.6,
+   "project_s": 203.6,
+   "total_s": 204.2
   },
   "291405": {
-   "conclusion_s": 0.8,
-   "project_s": 157.3,
-   "total_s": 158.1
+   "conclusion_s": 0.7,
+   "project_s": 17.9,
+   "total_s": 18.6
   },
   "298814": {
-   "conclusion_s": 3.7,
-   "project_s": 0.1,
-   "total_s": 3.8
+   "conclusion_s": 0.5,
+   "project_s": 0.0,
+   "total_s": 0.5
   },
   "302030": {
-   "conclusion_s": 20.5,
-   "project_s": 506.2,
-   "total_s": 526.7
+   "conclusion_s": 0.7,
+   "project_s": 255.0,
+   "total_s": 255.8
   },
   "302704": {
-   "conclusion_s": 30.1,
-   "project_s": 0.2,
-   "total_s": 30.3
+   "conclusion_s": 1.1,
+   "project_s": 0.0,
+   "total_s": 1.1
   }
  }
 }
