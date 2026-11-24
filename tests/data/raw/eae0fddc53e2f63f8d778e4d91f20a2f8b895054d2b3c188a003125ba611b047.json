@@ -1,0 +1,110 @@
+{
+ "model": "model1",
+ "url": "http://127.0.0.1:8001/v1",
+ "time": "2026-11-24T13:37:28",
+ "duration_s": 0.948,
+ "prompt_hash": "907d5d225eb7e4293422122b7b57816160a89895ff87eefa2870c4002c089f5f",
+ "request": {
+  "model": "qwen3.8-27b",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You are given a list of room names from a building. Classify each name:\nHa - car parking (паркинг, автостоянка, garage); Ht - technical room or technical floor (pump room, switchboard room, ventilation chamber etc.);\nHu - common-use part of a residential building (staircase, lift lobby, common corridor, vestibule etc.); other - everything else (apartment, office, retail etc.).\nReturn the names unchanged and in the given order.\nReply with JSON only: {\"rooms\": [{\"name\": \"<the given name>\", \"category\": \"Ha\" | \"Ht\" | \"Hu\" | \"other\"}]}"
+   },
+   {
+    "role": "user",
+    "content": "Room names:\n1. Диспетчерская"
+   }
+  ],
+  "max_tokens": 2048,
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "answer",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "rooms": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "category": {
+          "type": "string",
+          "enum": [
+           "Ha",
+           "Ht",
+           "Hu",
+           "other"
+          ]
+         }
+        },
+        "required": [
+         "name",
+         "category"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "rooms"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0,
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "response": {
+  "id": "chatcmpl-a405fa4d6b29d2d8",
+  "object": "chat.completion",
+  "created": 1795527447,
+  "model": "qwen3.8-27b",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\n  \"rooms\": [\n    {\n      \"name\": \"Диспетчерская\",\n      \"category\": \"other\"\n    }\n  ]\n}",
+     "refusal": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "stop",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null,
+    "weight_versions": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.34.0-d0217734",
+  "usage": {
+   "prompt_tokens": 168,
+   "total_tokens": 207,
+   "completion_tokens": 39,
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}
