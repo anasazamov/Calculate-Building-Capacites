@@ -42,23 +42,31 @@ async function show(file, page, snippet) {
     el('sheet').appendChild(h);
   }
   el('sheetinfo').textContent = (info.sheet ? 'Varaq turi: ' + info.sheet : '') + (info.textless ? ' — MATNSIZ sahifa' : '');
+  const fitScale = Math.min(1, (el('canvas').clientWidth - 4) / state.natural.w);
   if (snippet) {
     el('snippetinfo').textContent = info.rects.length
       ? `Manba parchasi: «${snippet}»`
       : `Parcha sahifada koordinatasi bilan topilmadi: «${snippet}»`;
-    // zoom so that the snippet is readable, then scroll it into view
-    state.scale = Math.max(Math.min(1, (el('canvas').clientWidth - 4) / state.natural.w), Math.min(1, 0.75));
   } else {
     el('snippetinfo').textContent = "Jadvaldagi qiymatni bosing — manba parchasi sahifada ajratib ko'rsatiladi.";
-    state.scale = Math.min(1, (el('canvas').clientWidth - 4) / state.natural.w);
   }
-  applyScale();
+  state.scale = fitScale;
   if (info.rects.length) {
-    const r = info.rects[0];
-    el('canvas').scrollTo({
-      left: Math.max(0, r[0] * state.scale - el('canvas').clientWidth / 3),
-      top: Math.max(0, r[1] * state.scale - el('canvas').clientHeight / 3),
-    });
+    // Zoom so that the whole snippet fits the pane and stays readable, then scroll to it.
+    const x0 = Math.min(...info.rects.map((r) => r[0])), x1 = Math.max(...info.rects.map((r) => r[0] + r[2]));
+    const y0 = Math.min(...info.rects.map((r) => r[1]));
+    const wanted = (el('canvas').clientWidth - 60) / Math.max(x1 - x0, 1);
+    state.scale = Math.max(fitScale, Math.min(1, wanted));
+    let left = x0 * state.scale - 30;
+    if (state.scale < 0.6) {
+      // The snippet spans a wide table: keep the text readable and bring its last part (the value) into view.
+      state.scale = 0.75;
+      left = x1 * state.scale - el('canvas').clientWidth + 40;
+    }
+    applyScale();
+    el('canvas').scrollTo({ left: Math.max(0, left), top: Math.max(0, y0 * state.scale - el('canvas').clientHeight / 3) });
+  } else {
+    applyScale();
   }
 }
 
