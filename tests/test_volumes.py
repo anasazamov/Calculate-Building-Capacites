@@ -52,8 +52,7 @@ def test_project_heights_win_over_conclusion():
 
 
 def project(rooms=(), breakdown=()) -> dict:
-    return {"scalars": {"volume_total": val("36036")},
-            "rooms": [{"name": n, "level": lv, "area": val(a), "volume": val(v) if v else None}
+    return {"rooms": [{"name": n, "level": lv, "area": val(a), "volume": val(v) if v else None}
                       for n, lv, a, v in rooms],
             "area_breakdown": [{**val(a), "name": n, "level_mark": m} for n, m, a in breakdown]}
 
@@ -111,14 +110,88 @@ def test_level_rows_are_not_room_groups():
     assert volumes.needs_model_suggestion("Бассейн", "room", "1 этаж", None)
 
 
-def test_hb():
-    hb = volumes.hb_volume(project(), {"volume": val("36036.0")})
-    assert hb["proposal"] == "36036" and hb["check"]["status"] == verify.OK
-    hb = volumes.hb_volume(project(), {"volume": val("36100.0")})
-    assert hb["check"]["status"] == verify.MISMATCH
-    p = project()
-    p["scalars"]["volume_total"] = {"value": "36036", "number": None, "status": verify.UNVERIFIED, "reason": "x"}
-    assert volumes.hb_volume(p, None)["proposal"] is None
+def building(name: str, volume: str | None = None, count: str | None = None, footprint: str | None = None,
+             floors: str | None = None, reference: str | None = None, kind: str | None = None) -> dict:
+    text = lambda t: {"value": t, "number": None, "status": verify.ACCEPTED if t else verify.NOT_FOUND,
+                      "file": "a.pdf", "page": 1, "source_text": t, "reason": ""}
+    return {"name": text(name), "type": text(kind), "volume": val(volume), "count": val(count),
+            "footprint_area": val(footprint), "floors": val(floors), "reference": text(reference)}
+
+
+def test_match_buildings_by_name_and_values():
+    project = [building("16-ти этажный жилой дом Тип-2", "36036", footprint="600.3")]
+    conclusion = [building("1-tip", "44198.6", kind="Turar joy binosi"), building("2-tip", "36036.0", footprint="600.3"),
+                  building("Magazin", "1200")]
+    pairs = volumes.match_buildings(project, conclusion)
+    assert [(x["p"], x["c"]) for x in pairs] == [(None, 0), (0, 1), (None, 2)]
+    assert "hajm mos" in pairs[1]["basis"] and "loyiha berilmagan" in pairs[0]["basis"]
+    # staff pairs it differently / removes the pair
+    assert [(x["p"], x["c"]) for x in volumes.match_buildings(project, conclusion, {"0": 2})] == [
+        (None, 0), (None, 1), (0, 2)]
+    assert [(x["p"], x["c"]) for x in volumes.match_buildings(project, conclusion, {"0": -1})] == [
+        (None, 0), (None, 1), (None, 2), (0, None)]
+    assert [(x["p"], x["c"]) for x in volumes.match_buildings([], conclusion)] == [(None, 0), (None, 1), (None, 2)]
+    single = volumes.match_buildings([building("Дом")], [building("Bino")])
+    assert (single[0]["p"], single[0]["c"]) == (0, 0)
+
+
+def rows_for(project: list[dict], conclusion: list[dict], overrides: dict | None = None) -> list[dict]:
+    return volumes.hb_rows(project, conclusion, volumes.match_buildings(project, conclusion), overrides or {})
+
+
+def test_hb_rows_project_total_matches_count_times_unit():
+    # 21 cottages: project gives the total, the conclusion one unit; 21 x 943.94 = 19822.74 vs 19822.65
+    rows = rows_for([building("Turar-joy binolari", "19822.65", count="21")], [building("Turar-joy binosi", "943.94")])
+    assert rows[0]["volume"] == "19822.65" and rows[0]["check"]["status"] == verify.ROUNDING
+    assert rows[0]["count"] == "21" and rows[0]["count_note"] == "loyihadan" and not rows[0]["computed"]
+
+
+def test_hb_rows_mismatch_gives_no_proposal():
+    rows = rows_for([building("Hojatxona", "251.37", count="21")], [building("Hojatxona binosi", "10.2")])
+    assert rows[0]["volume"] is None and rows[0]["check"]["status"] == verify.MISMATCH
+    hb = volumes.hb_volume(rows)
+    assert hb["proposal"] is None and not hb["complete"] and "Hojatxona" in hb["notes"][-1]
+    # staff resolves it with a reason
+    fixed = rows_for([building("Hojatxona", "251.37", count="21")], [building("Hojatxona binosi", "10.2")],
+                     {rows[0]["id"]: {"volume": "251.37", "reason": "loyiha bo'yicha"}})
+    assert volumes.hb_volume(fixed)["proposal"] == "251.37"
+
+
+def test_hb_rows_conclusion_only_and_reference():
+    conclusion = [building("Blok №3 – Ayvon", "113500.0"), building("Blok №5", "8306.6", count="2"),
+                  building("Blok №6", reference="Blok №3 – Ayvon bilan bir xil")]
+    rows = rows_for([], conclusion)
+    assert rows[0]["volume"] == "113500.0" and "loyiha berilmagan" in rows[0]["formula"]
+    assert rows[1]["volume"] == "16613.2" and rows[1]["computed"] and "soni × birlik" in rows[1]["formula"]
+    assert rows[2]["volume"] is None and "havola" in rows[2]["formula"]   # never copied from the other block
+    hb = volumes.hb_volume(rows)
+    assert hb["proposal"] is None and not hb["complete"]
+    # staff enters the referenced block's volume, or leaves the block out
+    done = rows_for([], conclusion, {rows[2]["id"]: {"volume": "113500", "reason": "Blok №3 bilan bir xil"}})
+    assert volumes.hb_volume(done)["proposal"] == str(D("113500.0") + D("16613.2") + D("113500"))
+    skipped = rows_for([], conclusion, {rows[2]["id"]: {"included": False, "reason": "2-etap"}})
+    assert volumes.hb_volume(skipped)["proposal"] == "130113.2"
+
+
+def test_hb_rows_equal_values_and_no_buildings():
+    rows = rows_for([building("Дом Тип-2", "36036")], [building("2-tip", "36036.0")])
+    assert rows[0]["volume"] == "36036" and rows[0]["check"]["status"] == verify.OK
+    assert volumes.hb_volume(rows)["proposal"] == "36036"
+    assert volumes.hb_volume([])["proposal"] is None
+
+
+def test_industrial_indicator():
+    rows = rows_for([], [building("Ayvon", "21528.0", footprint="1794.0", floors="1"),
+                         building("Ofis", "1507.5", footprint="251.25", floors="2")])
+    items, total = volumes.industrial_indicator(rows)
+    assert items[0]["within_3m"] == "5382.0" and items[0]["excess"] == "16146.0"
+    assert items[1]["within_3m"] == "1507.50" and D(items[1]["excess"]) == 0
+    assert total == D("16146.0")
+
+
+def test_floor_lists_and_mansard_levels():
+    assert volumes.parse_level("1,2,3 qavatlarda") == Level("range", 1, 3)
+    assert volumes.parse_level("mansarda qavati") == Level("technical")
 
 
 def test_hyu():

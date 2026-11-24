@@ -31,7 +31,9 @@ _FLOOR_WORD = r"(?:этаж\w*|qavat\w*|қават\w*)"
 _RANGE = re.compile(r"(\d+)\s*[-–—]\s*(\d+)\s*[-–]?\s*" + _FLOOR_WORD, re.I)
 _SINGLE = re.compile(r"(\d+)\s*[-–]?\s*(?:й|го|ой|ый|chi|nchi|инчи|чи)?\s*[-–]?\s*" + _FLOOR_WORD
                      + r"|" + _FLOOR_WORD + r"\s*(\d+)", re.I)
+_LIST = re.compile(r"(\d+(?:\s*,\s*\d+)+)\s*[-–]?\s*" + _FLOOR_WORD, re.I)
 _TYPICAL = re.compile(r"типов|этаж|qavat|қават", re.I)
+_MANSARD = re.compile(r"мансард|mansard", re.I)
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,12 @@ def parse_level(text: str | None, mark: str | None = None) -> Level:
     t = (text or "").replace("ё", "е")
     if _BASEMENT.search(t):
         return Level("basement")
+    if _MANSARD.search(t):
+        return Level("technical")  # attic storey: never taken as a typical floor height
+    m = _LIST.search(t)
+    if m:
+        numbers = [int(x) for x in re.findall(r"\d+", m.group(1))]
+        return Level("range", min(numbers), max(numbers))
     m = _RANGE.search(t)
     if m and int(m.group(1)) < int(m.group(2)):
         return Level("range", int(m.group(1)), int(m.group(2)))
@@ -231,18 +239,168 @@ def category_volume(code: str, components: list[dict]) -> dict:
             "component_ids": [c["id"] for c in own]}
 
 
-def hb_volume(project: dict, conclusion_building: dict | None) -> dict:
-    p = project["scalars"]["volume_total"]
-    proposal = _accepted_number(p)
-    c = conclusion_building["volume"] if conclusion_building else None
-    check = verify.check_equal("hb_project_vs_conclusion", "Hb: loyiha va xulosa", proposal, _accepted_number(c))
+# ---------- Hb: one row per building ----------
+
+_NAME_NOISE = {"binosi", "bino", "binolari", "binolar", "zdanie", "va", "i"}
+
+
+def _name_tokens(building: dict) -> set[str]:
+    text = f"{(building.get('type') or {}).get('value') or ''} {building['name'].get('value') or ''}"
+    return {x for x in re.split(r"[^a-z0-9]+", verify.transliterate(text)) if x and x not in _NAME_NOISE}
+
+
+def _pair_score(p: dict, c: dict) -> tuple[float, str]:
+    a, b = _name_tokens(p), _name_tokens(c)
+    name = len(a & b) / min(len(a), len(b)) if a and b else 0.0
+    score, why = name, [f"nom o'xshashligi {name:.2f}"] if name else []
+    count = _accepted_number(p.get("count")) or _accepted_number(c.get("count"))
+    for field, weight, label in (("volume", 1.0, "hajm"), ("footprint_area", 0.5, "qurilish maydoni")):
+        check = verify.check_equal_scaled("x", "x", _accepted_number(p.get(field)), _accepted_number(c.get(field)), count)
+        if check.status in (verify.OK, verify.ROUNDING):
+            score += weight
+            why.append(f"{label} mos")
+    return score, ", ".join(why)
+
+
+def match_buildings(project: list[dict], conclusion: list[dict],
+                    manual: dict[str, int] | None = None) -> list[dict]:
+    """Pair project buildings with conclusion buildings -> [{"p": index|None, "c": index|None, "basis": str}].
+
+    Every conclusion building appears exactly once (in document order), unmatched project buildings
+    follow. `manual` maps a project index (as a string) to a conclusion index, or to -1 for "no pair".
+    """
+    manual = manual or {}
+    pair_of: dict[int, tuple[int, str]] = {}      # conclusion index -> (project index, basis)
+    used_p: set[int] = set()
+    for key, ci in manual.items():
+        pi = int(key)
+        if 0 <= pi < len(project):
+            used_p.add(pi)
+            if 0 <= ci < len(conclusion):
+                pair_of[ci] = (pi, "xodim belgilagan")
+    if len(project) == 1 and len(conclusion) == 1 and not manual:
+        pair_of[0] = (0, "har ikki hujjatda bitta bino")
+        used_p.add(0)
+    candidates = sorted(((*_pair_score(p, c), pi, ci) for pi, p in enumerate(project)
+                         for ci, c in enumerate(conclusion)), key=lambda x: -x[0])
+    for score, why, pi, ci in candidates:
+        if score >= 0.34 and pi not in used_p and ci not in pair_of:
+            pair_of[ci] = (pi, f"avtomatik: {why} (xodim tekshirsin)")
+            used_p.add(pi)
+    pairs = [{"p": pair_of[ci][0] if ci in pair_of else None, "c": ci,
+              "basis": pair_of[ci][1] if ci in pair_of else "loyihada mos bino topilmadi yoki loyiha berilmagan"}
+             for ci in range(len(conclusion))]
+    pairs.extend({"p": pi, "c": None, "basis": "xulosada mos bino topilmadi"}
+                 for pi in range(len(project)) if pi not in {x["p"] for x in pairs})
+    return pairs
+
+
+def hb_rows(project: list[dict], conclusion: list[dict], pairs: list[dict], overrides: dict[str, dict]) -> list[dict]:
+    """One Hb row per building (pair): the volume this building contributes, with its basis.
+
+    - project volume consistent with the conclusion (equal, or equal to count x per-unit value,
+      or a rounding difference): the project value is proposed;
+    - no project: count x conclusion volume ("computed" when count > 1);
+    - project and conclusion disagree, or the conclusion only refers to another building:
+      no proposal for the row, staff decides.
+    """
+    rows: list[dict] = []
+    for pair in pairs:
+        p = project[pair["p"]] if pair["p"] is not None else None
+        c = conclusion[pair["c"]] if pair["c"] is not None else None
+        name_v = (c or p or {}).get("name", {})
+        name = str(name_v.get("value") or "(nomsiz)")
+        if c and (c.get("type") or {}).get("value"):
+            name = f"{c['type']['value']} — {name}"
+        pv, cv = (p or {}).get("volume"), (c or {}).get("volume")
+        p_num, c_num = _accepted_number(pv), _accepted_number(cv)
+        count_c, count_p = _accepted_number((c or {}).get("count")), _accepted_number((p or {}).get("count"))
+        count = count_c or count_p or Decimal(1)
+        count_note = ("xulosadan" if count_c else "loyihadan") if (count_c or count_p) else "yozilmagan (1 deb olindi)"
+        reference = (c or {}).get("reference") or {}
+        check = verify.check_equal_scaled(f"hb_row_{len(rows)}", f"Hb: {name}", p_num, c_num, count)
+        proposal: Decimal | None = None
+        computed = False
+        if p_num is not None and c_num is not None:
+            if check.status in (verify.OK, verify.ROUNDING):
+                if p_num == c_num and count > 1:
+                    proposal, computed = p_num * count, True
+                    formula = f"{fmt_num(count)} dona × {fmt_num(p_num)} = {fmt_num(proposal)} m³ (hisoblangan: soni × birlik)"
+                else:
+                    proposal = p_num
+                    formula = f"loyihada yozilgan hajm {fmt_num(p_num)} m³; xulosa bilan mos"
+            else:
+                formula = "loyiha va xulosa hajmi mos emas — qiymatni xodim tanlaydi"
+        elif p_num is not None:
+            proposal = p_num
+            formula = f"loyihada yozilgan hajm {fmt_num(p_num)} m³ (xulosada bu bino hajmi yo'q)"
+        elif c_num is not None:
+            proposal, computed = c_num * count, count > 1
+            formula = (f"{fmt_num(count)} dona × {fmt_num(c_num)} = {fmt_num(proposal)} m³ (hisoblangan: soni × birlik)"
+                       if count > 1 else f"xulosada yozilgan hajm {fmt_num(c_num)} m³") + "; loyiha berilmagan"
+        elif reference.get("status") == verify.ACCEPTED:
+            formula = f"hajm yozilmagan, faqat havola: «{reference['value']}» — qiymatni xodim kiritadi"
+        else:
+            formula = "hajm hujjatlardan qabul qilinmadi — qiymatni xodim kiritadi"
+        cid = component_id("hb", (cv or pv or {}).get("file"), (cv or pv or {}).get("page"), name,
+                           str((cv or pv or {}).get("value")))
+        ov = overrides.get(cid, {})
+        if ov.get("volume") is not None:
+            proposal, computed = Decimal(ov["volume"]), False
+            formula = f"xodim kiritgan hajm: {fmt_num(proposal)} m³"
+        included = bool(ov["included"]) if ov.get("included") is not None else True
+        rows.append({
+            "id": cid, "name": name, "pair": pair, "count": str(count), "count_note": count_note,
+            "project": pv, "conclusion": cv, "reference": reference or None, "check": check.dict(),
+            "volume": None if proposal is None else str(proposal), "computed": computed, "formula": formula,
+            "included": included, "override": ov or None,
+            "footprint": (c or p or {}).get("footprint_area"), "floors": (c or p or {}).get("floors"),
+        })
+    return rows
+
+
+def hb_volume(rows: list[dict]) -> dict:
+    """Hb proposal: the sum of the included building rows; incomplete while any of them has no volume."""
+    own = [r for r in rows if r["included"]]
     notes: list[str] = []
-    if proposal is None:
-        notes.append(f"loyihada jami qurilish hajmi {verify.STATUS_LABELS[p['status']]}"
-                     + (f" ({p['reason']})" if p.get("reason") else ""))
-    return {"code": "Hb", "proposal": None if proposal is None else str(proposal), "complete": proposal is not None,
-            "formula": "loyihadagi jami qurilish hajmi" if proposal is not None else "aniqlanmadi",
-            "notes": notes, "check": check.dict(), "component_ids": []}
+    if not rows:
+        return {"code": "Hb", "proposal": None, "complete": False, "formula": "aniqlanmadi",
+                "notes": ["hujjatlardan hajmi bor bino o'qilmadi — Hb ni xodim kiritadi"], "component_ids": []}
+    missing = [r for r in own if r["volume"] is None]
+    excluded = [r for r in rows if not r["included"]]
+    if excluded:
+        notes.append(f"{len(excluded)} ta bino xodim tomonidan hisobdan chiqarilgan")
+    if any(r["computed"] for r in own):
+        notes.append("ayrim qatorlar hisoblangan (soni × bir dona hajmi)")
+    if any(r["project"] is None or r["project"]["status"] != verify.ACCEPTED for r in own if r["volume"] is not None):
+        notes.append("ayrim binolar uchun loyiha hajmi yo'q — xulosadagi qiymat olindi")
+    if missing:
+        notes.append(f"{len(missing)} ta bino hajmi aniqlanmagan: " + "; ".join(r["name"] for r in missing)
+                     + " — yig'indi to'liq emas")
+        return {"code": "Hb", "proposal": None, "complete": False, "formula": "to'liq emas", "notes": notes,
+                "component_ids": [r["id"] for r in own]}
+    total = sum((Decimal(r["volume"]) for r in own), Decimal(0))
+    formula = " + ".join(fmt_num(Decimal(r["volume"])) for r in own) + f" = {fmt_num(total)} m³"
+    return {"code": "Hb", "proposal": str(total), "complete": True, "formula": formula, "notes": notes,
+            "component_ids": [r["id"] for r in own]}
+
+
+def industrial_indicator(rows: list[dict]) -> tuple[list[dict], Decimal]:
+    """Industrial buildings are charged for at most 3 m of height per storey. For every Hb row:
+    footprint x 3 m x storeys, and the part of the volume above it. Shown only, never subtracted."""
+    out: list[dict] = []
+    total = Decimal(0)
+    for r in rows:
+        footprint, floors = _accepted_number(r["footprint"]), _accepted_number(r["floors"]) or Decimal(1)
+        if not r["included"] or r["volume"] is None or footprint is None:
+            continue
+        count = Decimal(r["count"])
+        within = footprint * 3 * floors * (count if r["computed"] else Decimal(1))
+        excess = max(Decimal(0), Decimal(r["volume"]) - within)
+        total += excess
+        out.append({"name": r["name"], "volume": r["volume"], "footprint": str(footprint), "floors": str(floors),
+                    "within_3m": str(within), "excess": str(excess)})
+    return out, total
 
 
 def _round2(v: Decimal) -> Decimal:
@@ -304,9 +462,3 @@ def hyu_volume(permitted_floors: int | None, total_floors: Decimal | None, compo
                           "teng bo'lingan — tekshiring"]}
     return {**base, "proposal": None, "complete": False, "formula": "",
             "notes": ["qavat maydonlari, balandliklari va yer usti hajmi yetarli emas — Hyu ni xodim kiritadi"]}
-
-
-def industrial_floors(components: list[dict]) -> list[tuple[str, Decimal, Decimal]]:
-    """(name, area, height) rows with a known height, for the industrial 3 m indicator."""
-    return [(c["name"], Decimal(c["area"]), Decimal(c["height"])) for c in components
-            if c["origin"] == "breakdown" and c["area"] is not None and c["height"] is not None]
