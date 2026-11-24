@@ -169,22 +169,35 @@ def stamp_text(page: Page) -> str:
     return "\n".join(line.text for line in group_lines(words))
 
 
-def _cell(c: str | None) -> str:
-    return re.sub(r"\s+", " ", c).strip() if c else ""
-
-
 def find_tables(pdf_path: Path, number: int) -> list[Table]:
-    """PyMuPDF find_tables: tables drawn with vector lines."""
+    """Tables drawn with vector lines (PyMuPDF find_tables).
+
+    Only the cell geometry is taken from PyMuPDF: its own cell-text extraction can drop
+    spaces and reorder punctuation ("600.3" -> "6003 ."), which would defeat verbatim source
+    checks. Cell text is rebuilt here from the page words that fall inside each cell.
+    """
     out: list[Table] = []
     with pymupdf.open(pdf_path) as doc:
         p = _open_page(doc, number - 1)
+        words = [Word(w[0], w[1], w[2], w[3], w[4]) for w in p.get_text("words")]
         for t in p.find_tables().tables:
-            rows = [[_cell(c) for c in r] for r in t.extract()]
-            rows = [r for r in rows if any(r)]
+            rows: list[list[str]] = []
+            for row in t.rows:
+                cells = [_cell_text(words, c) for c in row.cells]
+                if any(cells):
+                    rows.append(cells)
             if rows:
                 b = t.bbox
                 out.append(Table(b[0], b[1], b[2], b[3], rows))
     return out
+
+
+def _cell_text(words: list[Word], bbox: tuple[float, float, float, float] | None) -> str:
+    if bbox is None:
+        return ""
+    x0, y0, x1, y1 = bbox
+    inside = [w for w in words if x0 <= (w.x0 + w.x1) / 2 <= x1 and y0 <= (w.y0 + w.y1) / 2 <= y1]
+    return " ".join(" ".join(w.text for w in g) for g in _line_groups(inside))
 
 
 # ---------- highlighting a source snippet on the page ----------
