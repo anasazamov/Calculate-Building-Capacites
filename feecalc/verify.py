@@ -209,7 +209,15 @@ _TRANSLIT = {
     "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t",
     "у": "u", "ф": "f", "х": "x", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "", "ы": "i", "ь": "",
     "э": "e", "ю": "yu", "я": "ya", "ў": "o", "қ": "q", "ғ": "g", "ҳ": "h",
+    # Latin with diacritics seen in conclusions ("Paxtaçi", "Şaxriston köçasi")
+    "ş": "sh", "ç": "ch", "ö": "o", "ğ": "g", "ü": "u", "ı": "i", "ñ": "n",
 }
+_APOSTROPHES = re.compile(r"['ʼ’`‘ʻ\u02bb\u02bc]")
+
+
+def transliterate(text: str) -> str:
+    """Lower-case Latin form of Uzbek/Russian text: Cyrillic and diacritics mapped, apostrophes dropped."""
+    return _APOSTROPHES.sub("", "".join(_TRANSLIT.get(ch, ch) for ch in text.lower()))
 _ADDRESS_NOISE = {
     "g", "gor", "gorod", "sh", "shahar", "shahri", "ul", "ulitsa", "kochasi", "kocha", "k", "viloyati",
     "viloyat", "obl", "oblast", "tumani", "tuman", "rayon", "r", "n", "mfy", "mahalla", "massiv", "massivi",
@@ -218,24 +226,90 @@ _ADDRESS_NOISE = {
 
 
 def address_tokens(address: str) -> set[str]:
-    t = "".join(_TRANSLIT.get(ch, ch) for ch in address.lower())
-    t = re.sub(r"['ʼ’`‘ʻ]", "", t)
-    return {x for x in re.split(r"[^a-z0-9]+", t) if x and x not in _ADDRESS_NOISE and not x.isdigit()}
+    return {x for x in re.split(r"[^a-z0-9]+", transliterate(address))
+            if x and x not in _ADDRESS_NOISE and not x.isdigit()}
 
 
-def check_address(project: str | None, conclusion: str | None) -> Check:
+def same_address(a: str, b: str) -> tuple[bool, int, int]:
+    """Do two addresses name the same place -> (same, matching words, words compared)."""
+    ta, tb = address_tokens(a), address_tokens(b)
+    if not ta or not tb:
+        return False, 0, 0
+    small, large = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    hits = sum(1 for x in small if any(difflib.SequenceMatcher(None, x, y).ratio() >= 0.8 for y in large))
+    return hits == len(small), hits, len(small)
+
+
+def check_address(project: list[str], conclusion: str | None) -> Check:
+    """Compare every address variant found in the project with the conclusion's address."""
     code, name = "address", "Manzil: loyiha va xulosa"
     if not project or not conclusion:
         return Check(code, name, NOT_RUN, "manzil hujjatlardan birida topilmadi")
-    a, b = address_tokens(project), address_tokens(conclusion)
-    if not a or not b:
-        return Check(code, name, NOT_RUN, "manzildan solishtiriladigan so'z ajralmadi")
-    small, large = (a, b) if len(a) <= len(b) else (b, a)
-    hits = sum(1 for x in small if any(difflib.SequenceMatcher(None, x, y).ratio() >= 0.8 for y in large))
-    detail = f"loyiha: «{project}»; xulosa: «{conclusion}»; mos so'zlar {hits}/{len(small)}"
-    if hits == len(small):
-        return Check(code, name, OK, detail + " (o'xshash; xodim ko'zdan kechirsin)")
-    return Check(code, name, MISMATCH, detail)
+    parts: list[str] = []
+    worst = OK
+    for variant in project:
+        same, hits, total = same_address(variant, conclusion)
+        if total == 0:
+            parts.append(f"«{variant}» — solishtiriladigan so'z ajralmadi")
+            worst = MISMATCH if worst == MISMATCH else NOT_RUN
+        elif same:
+            parts.append(f"«{variant}» — o'xshash ({hits}/{total})")
+        else:
+            parts.append(f"«{variant}» — FARQ ({hits}/{total})")
+            worst = MISMATCH
+    detail = f"xulosa: «{conclusion}»; loyiha: " + "; ".join(parts)
+    if worst == OK:
+        detail += " (xodim ko'zdan kechirsin)"
+    return Check(code, name, worst, detail)
+
+
+def check_equal_scaled(code: str, name: str, project: Decimal | None, unit: Decimal | None,
+                       count: Decimal | None) -> Check:
+    """Project value against the conclusion's per-unit value for `count` identical buildings.
+
+    The project may state the value for one unit or for all units; both readings are tried.
+    A gap within count x half a unit of the last written digit is a rounding difference.
+    """
+    if project is None or unit is None:
+        missing = "loyihada" if project is None else "xulosada"
+        return Check(code, name, NOT_RUN, f"{missing} qabul qilingan qiymat yo'q")
+    n = count if count is not None and count > 0 else Decimal(1)
+    if project == unit:
+        note = f" (bir dona uchun; {fmt_num(n)} dona)" if n > 1 else ""
+        return Check(code, name, OK, f"loyiha {fmt_num(project)} = xulosa {fmt_num(unit)}{note}")
+    if n > 1:
+        total = unit * n
+        expr = f"loyiha {fmt_num(project)}; xulosa {fmt_num(n)} × {fmt_num(unit)} = {fmt_num(total)}"
+        if project == total:
+            return Check(code, name, OK, expr)
+        tolerance = n * Decimal(5).scaleb(-(_places(unit) + 1))
+        if abs(project - total) <= tolerance:
+            return Check(code, name, ROUNDING, f"{expr} — yaxlitlash farqi {fmt_num(project - total)}")
+        return Check(code, name, MISMATCH, f"{expr}; farq {fmt_num(project - total)}")
+    if is_rounding_difference(project, unit):
+        return Check(code, name, ROUNDING, f"loyiha {fmt_num(project)}, xulosa {fmt_num(unit)} — yaxlitlash farqi")
+    return Check(code, name, MISMATCH, f"loyiha {fmt_num(project)}, xulosa {fmt_num(unit)}; "
+                                       f"farq {fmt_num(project - unit)}")
+
+
+def plan_dimensions(plan_size: str | None) -> list[Decimal]:
+    """The numbers of a plan size such as "26.97 × 26.89" or "1,6x15,5 metr"."""
+    if not plan_size:
+        return []
+    t = re.sub(r"(?<=\d)\s*[xх×*]\s*(?=\d)", " ", plan_size.lower())
+    return [v for v, _minus in numbers_in_text(t)]
+
+
+def check_plan_vs_footprint(code: str, name: str, plan_size: str | None, footprint: Decimal | None) -> Check:
+    """The bounding rectangle of the plan cannot be smaller than the built-up area."""
+    dims = plan_dimensions(plan_size)
+    if footprint is None or len(dims) != 2:
+        return Check(code, name, NOT_RUN, "tarx o'lchami (ikki son) yoki qurilish maydoni yo'q")
+    area = dims[0] * dims[1]
+    expr = f"{fmt_num(dims[0])} × {fmt_num(dims[1])} = {fmt_num(area)} m²; qurilish maydoni {fmt_num(footprint)} m²"
+    if area < footprint:
+        return Check(code, name, WARNING, expr + " — tarx o'lchami qurilish maydonidan kichik")
+    return Check(code, name, OK, expr)
 
 
 # ---------- agreement of the two models ----------

@@ -87,10 +87,44 @@ def test_volume_bounds():
 
 
 def test_address():
-    t = v.check_address("г. Наманган, ул. Темир йул", "Samarqand shahri, Maysazor ko'chasi")
+    t = v.check_address(["г. Наманган, ул. Темир йул"], "Samarqand shahri, Maysazor ko'chasi")
     assert t.status == v.MISMATCH
-    assert v.check_address("г. Самарканд, ул. Майсазор", "Samarqand shahri, Maysazor ko'chasi").status == v.OK
-    assert v.check_address(None, "Samarqand").status == v.NOT_RUN
+    assert v.check_address(["г. Самарканд, ул. Майсазор"], "Samarqand shahri, Maysazor ko'chasi").status == v.OK
+    assert v.check_address([], "Samarqand").status == v.NOT_RUN
+    # one of several project variants disagrees -> mismatch
+    t = v.check_address(["Samarqand sh., Maysazor ko'chasi 11", "г. Наманган, ул. Темир йул"],
+                        "Samarqand shahri, Maysazor ko'chasi")
+    assert t.status == v.MISMATCH and "FARQ" in t.detail and "o'xshash" in t.detail
+
+
+def test_address_spelling_variants_are_not_a_mismatch():
+    a = "Samarqand viloyati, Paxtaçi tumani, Şaxriston köçasi"
+    b = "Samarqand viloyati, Paxtachi tumani, Shaxriston ko‘chasi"
+    assert v.check_address([b], a).status == v.OK
+    assert v.transliterate("Köçasi ko`chasi ko‘chasi koʻchasi") == "kochasi kochasi kochasi kochasi"
+
+
+def test_equal_scaled():
+    D = v.Decimal
+    assert v.check_equal_scaled("k", "n", D("36036"), D("36036.0"), None).status == v.OK
+    # 21 identical units: 21 x 943.94 = 19822.74 vs 19822.65 in the project -> rounding
+    t = v.check_equal_scaled("k", "n", D("19822.65"), D("943.94"), D("21"))
+    assert t.status == v.ROUNDING and "19822.74" in t.detail
+    assert v.check_equal_scaled("k", "n", D("2304.96"), D("109.76"), D("21")).status == v.OK
+    assert v.check_equal_scaled("k", "n", D("251.37"), D("10.2"), D("21")).status == v.MISMATCH
+    assert v.check_equal_scaled("k", "n", D("943.94"), D("943.94"), D("21")).status == v.OK   # per-unit in both
+    assert v.check_equal_scaled("k", "n", None, D("1"), D("2")).status == v.NOT_RUN
+
+
+def test_plan_vs_footprint():
+    D = v.Decimal
+    assert v.plan_dimensions("26.97 × 26.89") == [D("26.97"), D("26.89")]
+    assert v.plan_dimensions("1,6x15,5 metr") == [D("1.6"), D("15.5")]
+    assert v.plan_dimensions("30,0х12,0") == [D("30.0"), D("12.0")]          # Cyrillic "х"
+    assert v.check_plan_vs_footprint("k", "n", "26.97 × 26.89", D("600.3")).status == v.OK
+    t = v.check_plan_vs_footprint("k", "n", "1,6x15,5 metr", D("222.6"))
+    assert t.status == v.WARNING and "24.8" in t.detail
+    assert v.check_plan_vs_footprint("k", "n", None, D("222.6")).status == v.NOT_RUN
 
 
 def test_unit():

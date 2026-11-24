@@ -200,6 +200,27 @@ def _cell_text(words: list[Word], bbox: tuple[float, float, float, float] | None
     return " ".join(" ".join(w.text for w in g) for g in _line_groups(inside))
 
 
+def structured_text(pdf_path: Path, page: Page) -> str:
+    """Page text for the model: every vector table as its own block of rows (cells joined with the
+    column separator), followed by the remaining lines outside tables.
+
+    On drawing sheets several tables sit side by side; rebuilding lines across the whole sheet
+    would merge rows of unrelated tables, so tables are cut out by their geometry first.
+    """
+    tables = find_tables(pdf_path, page.number)
+    parts: list[str] = []
+    for i, t in enumerate(tables, start=1):
+        parts.append(f"[TABLE {i}]")
+        parts.extend(t.text_lines())
+        parts.append("")
+    outside = [w for w in page.words
+               if not any(t.x0 <= (w.x0 + w.x1) / 2 <= t.x1 and t.y0 <= (w.y0 + w.y1) / 2 <= t.y1 for t in tables)]
+    if tables and outside:
+        parts.append("[TEXT OUTSIDE TABLES]")
+    parts.extend(line.text for line in group_lines(outside))
+    return "\n".join(parts)
+
+
 # ---------- highlighting a source snippet on the page ----------
 
 Rect = tuple[float, float, float, float]
@@ -217,7 +238,10 @@ def snippet_rects(pdf_path: Path, number: int, snippet: str) -> list[Rect]:
     """
     with pymupdf.open(pdf_path) as doc:
         p = _open_page(doc, number - 1)
-        found = p.search_for(snippet.replace(COLUMN_SEP, " "))
+        # Default search_for joins a line-final "-" with the next line, so a snippet ending in a
+        # hyphen would not be found; de-hyphenation is switched off.
+        flags = pymupdf.TEXTFLAGS_SEARCH & ~pymupdf.TEXT_DEHYPHENATE
+        found = p.search_for(snippet.replace(COLUMN_SEP, " "), flags=flags)
         if found:
             return [(r.x0, r.y0, r.x1, r.y1) for r in found]
         words = [Word(w[0], w[1], w[2], w[3], w[4]) for w in p.get_text("words")]
