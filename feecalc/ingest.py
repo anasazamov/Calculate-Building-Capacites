@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import re
 import statistics
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,6 +19,10 @@ IMAGE_MAX_ZOOM = 2.0
 STAMP_WIDTH_PT = 560.0        # GOST title block is 185 mm ~ 524 pt, plus margin
 STAMP_HEIGHT_PT = 200.0       # 55 mm ~ 156 pt, plus margin
 COLUMN_SEP = " | "
+
+# MuPDF is not thread-safe, not even across documents. The web worker and the test scripts read
+# several documents from worker threads, so every use of a PyMuPDF document takes this lock.
+MUPDF_LOCK = threading.RLock()
 
 
 @dataclass
@@ -102,7 +107,7 @@ def ingest(pdf_path: Path, image_dir: Path | None = None) -> list[Page]:
     """Read all pages of a PDF; when `image_dir` is given also render PNGs."""
     pdf_path = Path(pdf_path)
     pages: list[Page] = []
-    with pymupdf.open(pdf_path) as doc:
+    with MUPDF_LOCK, pymupdf.open(pdf_path) as doc:
         for i in range(doc.page_count):
             page = read_page(doc, i, pdf_path.name)
             if image_dir is not None:
@@ -177,7 +182,7 @@ def find_tables(pdf_path: Path, number: int) -> list[Table]:
     checks. Cell text is rebuilt here from the page words that fall inside each cell.
     """
     out: list[Table] = []
-    with pymupdf.open(pdf_path) as doc:
+    with MUPDF_LOCK, pymupdf.open(pdf_path) as doc:
         p = _open_page(doc, number - 1)
         words = [Word(w[0], w[1], w[2], w[3], w[4]) for w in p.get_text("words")]
         for t in p.find_tables().tables:
@@ -236,7 +241,7 @@ def snippet_rects(pdf_path: Path, number: int, snippet: str) -> list[Rect]:
     PyMuPDF search_for first; if it finds nothing (table columns stored in a different
     order in the text layer) the snippet words are matched against line-ordered words.
     """
-    with pymupdf.open(pdf_path) as doc:
+    with MUPDF_LOCK, pymupdf.open(pdf_path) as doc:
         p = _open_page(doc, number - 1)
         # Default search_for joins a line-final "-" with the next line, so a snippet ending in a
         # hyphen would not be found; de-hyphenation is switched off.

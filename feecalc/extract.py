@@ -437,6 +437,38 @@ def _merge_buildings(buildings: list[dict], fields: tuple[str, ...], model: str)
     return merged
 
 
+_FLOORS_STATEMENT = re.compile(
+    r"(?<![\d.,])(\d{1,2})\s*[-–]?\s*(?:ti\s+)?(?:qavatli|qavatdan|qavat\s+(?:bino|hamda|va\b|iborat)|etajn\w*)")
+CONTRADICTION = "ziddiyat"
+
+
+def floor_statements(pages: list[Page]) -> list[dict]:
+    """Every place where the text states a number of storeys ("4 qavat hamda ...", "5-qavat bino",
+    "16-ти этажный"), found by code. Ordinals such as "1-qavatda" (on the 1st floor) do not match."""
+    found: list[dict] = []
+    for p in pages:
+        text = verify.transliterate(verify.normalize(page_line_text(p)))
+        for m in _FLOORS_STATEMENT.finditer(text):
+            found.append({"number": int(m.group(1)), "page": p.number,
+                          "snippet": text[max(0, m.start() - 30):m.end() + 20].strip()})
+    return found
+
+
+def flag_floor_contradictions(buildings: list[dict], statements: list[dict]) -> None:
+    """A document may state the number of storeys differently in two places. The model returns one
+    of them; when the text also states a number that no building has, every accepted storey count
+    is flagged, so the value is never accepted silently."""
+    accepted = {int(Decimal(b["floors"]["number"])) for b in buildings
+                if b["floors"]["status"] == verify.ACCEPTED and b["floors"]["number"] is not None}
+    others = [s for s in statements if s["number"] not in accepted]
+    if not accepted or not others:
+        return
+    listed = "; ".join(f"{s['number']} ({s['page']}-sahifa: «…{s['snippet']}…»)" for s in others[:4])
+    for b in buildings:
+        if b["floors"]["status"] == verify.ACCEPTED:
+            b["floors"]["flags"].append(f"{CONTRADICTION}: hujjatda qavatlar soni boshqacha ham yozilgan — {listed}")
+
+
 def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path) -> dict:
     prep = conclusion_chunks(pages)
     texts = page_texts(pages, [])
@@ -461,12 +493,15 @@ def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path) -> dict:
                 {**make_value("height", x, file, x.get("page"), texts, m.key), "level": x.get("level")}
                 for x in b["floor_heights"]]
             buildings.append(building)
+    if len(prep.chunks) > 1:
+        buildings = _merge_buildings(buildings, BUILDING_FIELDS, m.key)
+    flag_floor_contradictions(buildings, floor_statements(pages))
     return {
         "doc": "conclusion", "model": m.key,
         "scalars": {k: merge(k, v, m.key) for k, v in scalars.items()},
         "totals": {k: merge(k, v, m.key) for k, v in totals.items()},
         "site_areas": _dedupe(site),
-        "buildings": _merge_buildings(buildings, BUILDING_FIELDS, m.key) if len(prep.chunks) > 1 else buildings,
+        "buildings": buildings,
         "requests": requests, "warnings": prep.warnings,
     }
 

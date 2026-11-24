@@ -117,3 +117,25 @@ def test_prompts_state_the_response_shape():
     # Without the shape in the prompt, schema-constrained output degrades (see HISOBOT.md).
     for system in (extract.CONCLUSION_SYSTEM, extract.TEP_SYSTEM, extract.ROOMS_SYSTEM):
         assert "Response shape:" in system and '"source_text"' in system
+
+
+def test_floor_contradiction_is_flagged():
+    def page(n: int, text: str) -> ingest.Page:
+        words = [ingest.Word(10 + 40 * i, 10, 45 + 40 * i, 20, w) for i, w in enumerate(text.split())]
+        return ingest.Page(file="c.pdf", number=n, width=600, height=800, text=text, words=words)
+    pages = [page(1, "Ko'ksaroy maydoni-1 bino 2-qavat, 1-qavatda tibbiy markaz"),
+             page(2, "Bino yerto‘la, 4 qavat hamda mansarda qavatidan iborat"),
+             page(5, "Yerto‘lali 5-qavat bino o'lchamlari o'qlarda 12,5x49,6 metr")]
+    statements = extract.floor_statements(pages)
+    assert [(s["number"], s["page"]) for s in statements] == [(4, 2), (5, 5)]     # ordinals are not statements
+
+    def building(floors: str) -> dict:
+        return {"floors": {"value": floors, "number": floors, "status": verify.ACCEPTED, "flags": []}}
+    b = [building("5")]
+    extract.flag_floor_contradictions(b, statements)
+    assert b[0]["floors"]["flags"] and b[0]["floors"]["flags"][0].startswith(extract.CONTRADICTION)
+    assert "4 (2-sahifa" in b[0]["floors"]["flags"][0]
+    # every stated number belongs to some building: nothing to flag
+    two = [building("4"), building("5")]
+    extract.flag_floor_contradictions(two, statements)
+    assert two[0]["floors"]["flags"] == [] and two[1]["floors"]["flags"] == []
