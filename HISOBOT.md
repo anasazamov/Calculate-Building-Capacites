@@ -429,7 +429,10 @@ top_k 20, presence_penalty 0`, `max_tokens` qat'iy (xulosa 12 000, varaq 6 144).
 6. **GitHub'ga push qilinmadi:** serverda GitHub hisob ma'lumoti yo'q
    (`could not read Username for 'https://github.com'`). Barcha commitlar lokal `main` da va
    arxivda. Push uchun token yoki SSH kalit kerak.
-7. **Uchinchi model** (Granite) sizning "boshqa modellarni ham sina" ko'rsatmangiz bo'yicha
+7. **try/except ikki joyda bor:** veb-ilovadagi ish chegarasida (TASK.md ruxsat bergan yagona
+   joy) va `scripts/read_samples.py` sinov skriptida har namuna chegarasida — bir namuna xato
+   bilan to'xtasa, xato to'liq holda saqlanadi va qolgan namunalar o'qiladi. Boshqa hech qayerda yo'q.
+8. **Uchinchi model** (Granite) sizning "boshqa modellarni ham sina" ko'rsatmangiz bo'yicha
    qo'shildi. Modelni "noldan qayta qurish" qilinmadi: bu ijara vaqtida bajarib bo'lmaydi va
    topilgan nosozliklar model arxitekturasida emas, kirish matni va cheklanmagan sxemada edi.
 
