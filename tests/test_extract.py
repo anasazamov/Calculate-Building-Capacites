@@ -6,20 +6,20 @@ TEXTS = {1: ["Строительный объём | м3 | 36036\nПлощадь 
 
 
 def test_make_value_accepted():
-    v = extract.make_value("volume_total", {"value": "36036", "unit": "м3",
+    v = extract.make_value("volume", {"value": "36036", "unit": "м3",
                                             "source_text": "Строительный объём | м3 | 36036"}, "a.pdf", 1, TEXTS, "model1")
     assert v["status"] == verify.ACCEPTED and v["number"] == "36036" and v["flags"] == []
     assert (v["file"], v["page"]) == ("a.pdf", 1)
 
 
 def test_make_value_invented_number_is_unverified():
-    v = extract.make_value("volume_total", {"value": "36063", "unit": "м3",
+    v = extract.make_value("volume", {"value": "36063", "unit": "м3",
                                             "source_text": "Строительный объём | м3 | 36036"}, "a.pdf", 1, TEXTS, "model1")
     assert v["status"] == verify.UNVERIFIED and v["number"] is None
 
 
 def test_make_value_garbage_prefix_is_unverified():
-    v = extract.make_value("volume_total", {"value": ">=36036", "unit": "м3",
+    v = extract.make_value("volume", {"value": ">=36036", "unit": "м3",
                                             "source_text": "Строительный объём | м3 | 36036"}, "a.pdf", 1, TEXTS, "model1")
     assert v["status"] == verify.UNVERIFIED
 
@@ -66,13 +66,45 @@ def test_conclusion_chunk_has_page_markers(sample_dir: Path):
     assert "[[PAGE 1]]" in prep.chunks[0].text and "[[PAGE 2]]" in prep.chunks[0].text
 
 
-def test_large_page_is_split_and_capped(monkeypatch):
-    prep = extract.Prepared()
-    page = ingest.Page(file="a.pdf", number=1, width=100, height=100, text="")
-    monkeypatch.setattr(extract, "CHUNK_CHARS", 50)
-    extract._add_chunks(prep, "rooms", page, [f"Комната {i} | 10.{i}" for i in range(100)])
+def test_large_page_is_split_and_capped(sample_dir: Path, monkeypatch):
+    pdf = sample_dir / "demo_project.pdf"
+    pages = ingest.ingest(pdf)
+    kinds = {p.number: classify.sheet_type(p) for p in pages}
+    monkeypatch.setattr(extract, "CHUNK_CHARS", 40)
+    prep = extract.project_chunks(pdf, pages[:1], kinds)
     assert len(prep.chunks) == extract.MAX_CHUNKS_PER_PAGE
     assert any("O'QILMADI" in w for w in prep.warnings)
+
+
+def test_project_page_text_keeps_tables_apart(sample_dir: Path):
+    pdf = sample_dir / "demo_project.pdf"
+    text = ingest.structured_text(pdf, ingest.ingest(pdf)[0])
+    assert "[TABLE 1]" in text and "Строительный объём | м3 | 36036" in text
+    assert "[TEXT OUTSIDE TABLES]" in text and "Высота этажа - 3.0 м" in text
+
+
+def test_merge_address_variants():
+    def val(value: str, page: int) -> dict:
+        return {"field": "address", "value": value, "number": None, "status": verify.ACCEPTED, "file": "a.pdf",
+                "page": page, "source_text": value, "reason": "", "flags": [], "model": "model1"}
+    same = extract.merge("address", [val("г. Самарканд, ул. Майсазор", 1), val("Samarqand sh., Maysazor ko'chasi", 2)], "m")
+    assert same["status"] == verify.ACCEPTED and len(same["variants"]) == 1
+    diff = extract.merge("address", [val("г. Самарканд, ул. Майсазор", 1), val("г. Наманган", 3)], "m")
+    assert diff["status"] == verify.CONFLICT and [v["page"] for v in diff["variants"]] == [1, 3]
+
+
+def test_level_mark_must_be_in_the_row():
+    row = {"level_mark": "+3.710...+49.210", "source_text": "План 2-16 го этажа на отм. +3.710м...+49.210м | м² | 7439.3"}
+    assert extract._checked_mark(row) == "+3.710...+49.210"
+    assert extract._checked_mark({"level_mark": "-3.300", "source_text": "План подвала на отм. -3.200м | м² | 465.9"}) is None
+    assert extract._checked_mark({"level_mark": None, "source_text": "x"}) is None
+
+
+def test_schema_strings_are_bounded():
+    # an unbounded string lets a repetition loop run to max_tokens (seen on a real drawing sheet)
+    value = extract.TEP_SCHEMA["properties"]["project_code"]["properties"]
+    assert all(value[k]["maxLength"] <= 250 for k in ("value", "unit", "source_text"))
+    assert extract.ROOMS_SCHEMA["properties"]["rooms"]["items"]["properties"]["name"]["maxLength"] <= 250
 
 
 def test_level_marks(sample_dir: Path):
