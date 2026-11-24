@@ -1,0 +1,43 @@
+{
+ "model": "qwen3.8-27b",
+ "vllm": "0.34.0",
+ "sampling": {
+  "temperature": 0.7,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0
+ },
+ "shape_in_prompt": true,
+ "canary": {
+  "ok": true,
+  "duration_s": 0.4
+ },
+ "sequential": {
+  "test": "sequential",
+  "count": 50,
+  "statuses": {
+   "ok": 50
+  },
+  "wall_s": 35.27,
+  "completion_tokens": 1421,
+  "tokens_per_s_total": 40.3,
+  "mean_request_s": 0.705,
+  "sample_failures": []
+ },
+ "parallel": {
+  "test": "parallel-16",
+  "count": 16,
+  "statuses": {
+   "ok": 16
+  },
+  "wall_s": 3.68,
+  "completion_tokens": 534,
+  "tokens_per_s_total": 145.0,
+  "mean_request_s": 2.951,
+  "sample_failures": []
+ },
+ "canary_after": {
+  "ok": true,
+  "duration_s": 0.396
+ }
+}
