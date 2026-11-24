@@ -1,0 +1,43 @@
+{
+ "model": "granite-4.1-30b",
+ "vllm": "0.34.0",
+ "sampling": {
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0
+ },
+ "shape_in_prompt": true,
+ "canary": {
+  "ok": true,
+  "duration_s": 0.354
+ },
+ "sequential": {
+  "test": "sequential",
+  "count": 50,
+  "statuses": {
+   "ok": 50
+  },
+  "wall_s": 28.32,
+  "completion_tokens": 1150,
+  "tokens_per_s_total": 40.6,
+  "mean_request_s": 0.566,
+  "sample_failures": []
+ },
+ "parallel": {
+  "test": "parallel-16",
+  "count": 16,
+  "statuses": {
+   "ok": 16
+  },
+  "wall_s": 2.71,
+  "completion_tokens": 384,
+  "tokens_per_s_total": 141.9,
+  "mean_request_s": 2.345,
+  "sample_failures": []
+ },
+ "canary_after": {
+  "ok": true,
+  "duration_s": 0.335
+ }
+}

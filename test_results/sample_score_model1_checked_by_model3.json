@@ -1,0 +1,14 @@
+{
+ "primary": "model1",
+ "second": "model3",
+ "classes": {
+  "correct_but_flagged": 66,
+  "correct_confirmed": 136,
+  "caught": 6,
+  "out_of_scope": 10,
+  "not_found": 1,
+  "partial": 1,
+  "flagged": 1
+ },
+ "silent_errors_unflagged": []
+}
