@@ -169,12 +169,20 @@ def _text(v: dict | None) -> str | None:
     return str(v["value"]) if v and v.get("status") == verify.ACCEPTED and v.get("value") else None
 
 
-def _other_model_building(other: dict | None, building: dict | None) -> dict | None:
-    """The second model's record of the same building (matched by name)."""
+def _other_model_building(other: dict | None, building: dict | None, alone: bool) -> dict | None:
+    """The second model's record of the same building. The two models may word the name differently,
+    so the match is by name, then by being the only building on both sides, then by equal volume
+    and built-up area."""
     if other is None or building is None:
         return None
     key = extract.name_key(building["name"])
     hits = [b for b in other["buildings"] if key and extract.name_key(b["name"]) == key]
+    if len(hits) == 1:
+        return hits[0]
+    if alone and len(other["buildings"]) == 1:
+        return other["buildings"][0]
+    hits = [b for b in other["buildings"]
+            if all(_num(b[f]) is not None and _num(b[f]) == _num(building[f]) for f in ("volume", "footprint_area"))]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -291,7 +299,8 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
     for n, pair in enumerate(pairs):
         pb = p1["buildings"][pair["p"]] if pair["p"] is not None else None
         cb = c1["buildings"][pair["c"]] if pair["c"] is not None else None
-        pb2, cb2 = _other_model_building(p2, pb), _other_model_building(c2, cb)
+        pb2 = _other_model_building(p2, pb, len(p1["buildings"]) == 1)
+        cb2 = _other_model_building(c2, cb, len(c1["buildings"]) == 1)
         title = " / ".join(str(b["name"]["value"]) for b in (cb, pb) if b and b["name"].get("value")) or "(nomsiz)"
         if cb and cb.get("type", {}).get("value"):
             title = f"{cb['type']['value']}: {title}"

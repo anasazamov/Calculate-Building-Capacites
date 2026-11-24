@@ -139,3 +139,22 @@ def test_floor_contradiction_is_flagged():
     two = [building("4"), building("5")]
     extract.flag_floor_contradictions(two, statements)
     assert two[0]["floors"]["flags"] == [] and two[1]["floors"]["flags"] == []
+
+
+def test_address_fragments_are_stitched_from_page_text():
+    line = 'Samarqand viloyati Paxtachi tumani "Jahonobod" MFY, "Shaxriston" ko‘chasi, 27-uy hududida qurilish. Rayon: g. Namangan'
+    texts = {1: [line]}
+
+    def val(value: str, status: str = verify.ACCEPTED) -> dict:
+        return {"field": "address", "value": value, "number": None, "status": status, "file": "a.pdf", "page": 1,
+                "source_text": value, "reason": "", "flags": [], "model": "model1"}
+    pieces = [val("Samarqand viloyati Paxtachi tumani "), val("Jahonobod"), val("Shaxriston"), val("27-uy"),
+              val("g. Namangan"), val("Toshkent", verify.UNVERIFIED)]
+    out = extract.stitch_addresses(pieces, texts)
+    accepted = [v for v in out if v["status"] == verify.ACCEPTED]
+    assert [v["value"] for v in accepted] == [
+        "Samarqand viloyati Paxtachi tumani 'Jahonobod' MFY, 'Shaxriston' ko'chasi, 27-uy", "g. Namangan"]
+    assert "birlashtirildi" in accepted[0]["flags"][0]
+    # the joined value is verbatim page text, so it passes the same source check
+    assert verify.verify_source(accepted[0]["value"], accepted[0]["source_text"], texts[1], False)[0] == verify.ACCEPTED
+    assert any(v["status"] == verify.UNVERIFIED for v in out)

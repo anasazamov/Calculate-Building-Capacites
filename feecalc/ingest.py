@@ -4,6 +4,7 @@ No OCR: a page without a text layer is flagged `textless`.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import re
 import statistics
@@ -19,6 +20,14 @@ IMAGE_MAX_ZOOM = 2.0
 STAMP_WIDTH_PT = 560.0        # GOST title block is 185 mm ~ 524 pt, plus margin
 STAMP_HEIGHT_PT = 200.0       # 55 mm ~ 156 pt, plus margin
 COLUMN_SEP = " | "
+
+# PyMuPDF 2.1 routes find_tables() through its bundled layout model (ONNX, CPU) whenever the
+# pymupdf-layout package is installed, which it is as a hard dependency. On drawing sheets that
+# costs 8-25 s per page and adds a second neural model to the chain. The classic vector-line
+# detector finds the same tables in under a second and is deterministic, so the layout model is
+# switched off for this process.
+assert hasattr(pymupdf, "_layout_enabled"), "PyMuPDF changed its layout switch; review feecalc/ingest.py"
+pymupdf._layout_enabled = False
 
 # MuPDF is not thread-safe, not even across documents. The web worker and the test scripts read
 # several documents from worker threads, so every use of a PyMuPDF document takes this lock.
@@ -206,6 +215,20 @@ def _cell_text(words: list[Word], bbox: tuple[float, float, float, float] | None
 
 
 def structured_text(pdf_path: Path, page: Page) -> str:
+    """Cached wrapper: table detection on a large drawing sheet takes seconds, and every model
+    reading the document needs the same text."""
+    stat = Path(pdf_path).stat()
+    return _structured_text(str(pdf_path), stat.st_mtime_ns, stat.st_size, page.number)
+
+
+@functools.lru_cache(maxsize=512)
+def _structured_text(pdf_path: str, _mtime: int, _size: int, number: int) -> str:
+    with MUPDF_LOCK, pymupdf.open(pdf_path) as doc:
+        page = read_page(doc, number - 1, Path(pdf_path).name)
+    return _build_structured_text(Path(pdf_path), page)
+
+
+def _build_structured_text(pdf_path: Path, page: Page) -> str:
     """Page text for the model: every vector table as its own block of rows (cells joined with the
     column separator), followed by the remaining lines outside tables.
 

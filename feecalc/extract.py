@@ -529,7 +529,8 @@ def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, cla
             if c.kind == "tep":
                 for k in PROJECT_SCALARS:
                     scalars[k].append(make_value(k, d[k], file, page, texts, m.key))
-                addresses.extend(make_value("address", x, file, page, texts, m.key) for x in d["addresses"])
+                addresses.extend(stitch_addresses(
+                    [make_value("address", x, file, page, texts, m.key) for x in d["addresses"]], texts))
                 site.extend({**make_value("site_area", x, file, page, texts, m.key),
                              "name": x["name"], "kind": x["kind"]} for x in d["site_areas"])
                 for b in d["buildings"]:
@@ -562,6 +563,48 @@ def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, cla
         "area_breakdown": _dedupe(breakdown), "floor_heights": _dedupe(heights),
         "rooms": rooms, "requests": requests, "warnings": warnings,
     }
+
+
+def stitch_addresses(values: list[dict], texts: dict[int, list[str]], gap: int = 16) -> list[dict]:
+    """Join address fragments that stand next to each other on the page.
+
+    Models tend to break an address at quotation marks (`... tumani "Jahonobod" MFY, "Shaxriston"
+    ko'chasi, 27-uy` comes back as four pieces). Accepted pieces from one page whose occurrences in
+    the page text are at most `gap` characters apart are replaced by the single span of page text
+    that covers them, so the joined value is still verbatim text of that page.
+    """
+    out: list[dict] = [v for v in values if v["status"] != verify.ACCEPTED]
+    by_page: dict[tuple, list[dict]] = {}
+    for v in values:
+        if v["status"] == verify.ACCEPTED:
+            by_page.setdefault((v["file"], v["page"]), []).append(v)
+    for (_file, page), group in by_page.items():
+        text = next((t for t in map(verify.normalize, texts.get(page, []))
+                     if all(verify.normalize(str(v["value"])) in t for v in group)), None)
+        if text is None or len(group) == 1:
+            out.extend(group)
+            continue
+        spans = sorted(((text.find(verify.normalize(str(v["value"]))), v) for v in group), key=lambda x: x[0])
+        current_start, current_end, first = spans[0][0], spans[0][0] + len(verify.normalize(str(spans[0][1]["value"]))), spans[0][1]
+        merged = 1
+        for start, v in spans[1:]:
+            end = start + len(verify.normalize(str(v["value"])))
+            if start - current_end <= gap:
+                current_end, merged = max(current_end, end), merged + 1
+                continue
+            out.append(_stitched(first, text[current_start:current_end], merged))
+            current_start, current_end, first, merged = start, end, v, 1
+        out.append(_stitched(first, text[current_start:current_end], merged))
+    return out
+
+
+def _stitched(first: dict, span: str, pieces: int) -> dict:
+    if pieces == 1:
+        return first
+    joined = dict(first)
+    joined["value"] = joined["source_text"] = span.strip()
+    joined["flags"] = [*first.get("flags", []), f"manzil sahifadagi {pieces} ta yonma-yon bo'lakdan birlashtirildi"]
+    return joined
 
 
 def _checked_mark(row: dict) -> str | None:

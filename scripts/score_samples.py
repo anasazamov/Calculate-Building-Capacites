@@ -83,15 +83,15 @@ def classify_address(value: dict | None, page: int, etalon: str, source: str) ->
         return "not_found"
     if value["status"] == verify.UNVERIFIED:
         return "caught"
-    variants = value.get("variants") or [{"value": value["value"], "page": value["page"]}]
+    variants = (value.get("variants") or [{"value": value["value"], "page": value["page"]}]) + (
+        value.get("other_sources") or [])
     if any(text_equal("address", str(v["value"]), etalon) for v in variants):
         return "correct"
     wanted, line = verify.address_tokens(etalon), verify.address_tokens(source)
-    on_page = [v for v in variants if v["page"] == page]
     if any(verify.address_tokens(str(v["value"])) & wanted and verify.address_tokens(str(v["value"])) <= (wanted | line)
-           for v in on_page):
+           for v in variants):
         return "partial"
-    if not on_page:
+    if not [v for v in variants if v["page"] == page]:
         return "not_found"
     return "silent_error"
 

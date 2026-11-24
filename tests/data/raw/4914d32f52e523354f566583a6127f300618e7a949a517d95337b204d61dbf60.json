@@ -1,15 +1,15 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-24T15:43:51",
- "duration_s": 35.692,
- "prompt_hash": "7870558569adb457b866bdaf08400cdf315f6b886f8dd2683e280d1cba0977e6",
+ "time": "2026-11-24T17:16:46",
+ "duration_s": 14.501,
+ "prompt_hash": "8a17ac6155ebce162e52c45b0d3533b823a32dc91d1868147ae47db6e1fe8644",
  "request": {
   "model": "qwen3.8-27b",
   "messages": [
    {
     "role": "system",
-    "content": "You copy data out of construction documents. The document is in Uzbek (Latin or Cyrillic script) or Russian, often mixed.\nStrict rules:\n1. Copy only values that are explicitly written in the given text. Never calculate, sum, multiply, guess, convert or fill in.\n2. \"value\" is a string. For a number it is the number alone, exactly as written in the document (e.g. \"36036\", \"9410.0\", \"600,3\", \"25 457\", \"-3.200\"); do not add units, comparison signs or comments.\n3. \"unit\" is the unit written next to that value, exactly as written (e.g. \"м3\", \"m2\", \"m²\", \"м\"); null if no unit is written.\n4. \"source_text\" is one contiguous fragment copied character by character from the text (up to 150 characters) that contains the value itself, together with its label when the label is next to it. It may run over a line break when the sentence continues on the next line. For a number the fragment must include its label or, in a table, the whole row with the row's name: a fragment made of numbers only is rejected. Do not alter it, skip words in the middle, translate or reorder it. The \" | \" column separator may be kept.\n5. If a value is not in the text: \"value\", \"unit\" and \"source_text\" are all null. An empty list is []. Most documents lack some fields: null is the expected answer for them.\n6. Reply with JSON only, in the shape below. All keys are required.\n\nThis is the text of one sheet of a project drawing album with a room table (экспликация полов / экспликация помещений / ведомость отделки помещений / xonalar eksplikatsiyasi): tables are given as [TABLE n] blocks with one row per line.\nResponse shape:\n{\"rooms\": [{\"name\": \"<room name as written>\", \"level\": \"<floor or level mark if written, else null>\", \"area\": \"<area number or null>\", \"volume\": \"<volume number if the document states a volume, else null>\", \"unit\": \"<unit of the area or null>\", \"source_text\": \"<fragment copied character by character from that row, containing the name and the area>\"}]}\nNotes:\n- One element per table row that names a room (or a group of rooms) and gives its area. If one row lists several room names, copy the name in full.\n- Skip rows that have no area. Skip total rows (Итого / Всего / Jami). If the sheet has no room areas, return {\"rooms\": []}.\n- \"level\": the floor or level the table (or the row) belongs to, if the sheet says so (e.g. in the table title: \"План подвала на отм. -3.200\").\n- Rule 2 applies to \"area\" and \"volume\" as well: the number alone."
+    "content": "You copy data out of construction documents. The document is in Uzbek (Latin or Cyrillic script) or Russian, often mixed.\nStrict rules:\n1. Copy only values that are explicitly written in the given text. Never calculate, sum, multiply, guess, convert or fill in.\n2. \"value\" is a string. For a number it is the number alone, exactly as written in the document (e.g. \"36036\", \"9410.0\", \"600,3\", \"25 457\", \"-3.200\"); do not add units, comparison signs or comments.\n3. \"unit\" is the unit written next to that value, exactly as written (e.g. \"м3\", \"m2\", \"m²\", \"м\"); null if no unit is written.\n4. \"source_text\" is one contiguous fragment copied character by character from the text (up to 150 characters) that contains the value itself, together with its label when the label is next to it. It may run over a line break when the sentence continues on the next line. For a number the fragment must include its label or, in a table, the whole row with the row's name: a fragment made of numbers only is rejected. Do not alter it, skip words in the middle, translate or reorder it. Quotation marks that are part of the text are copied too (escaped as \\\" in JSON); do not stop at them. The \" | \" column separator may be kept.\n5. If a value is not in the text: \"value\", \"unit\" and \"source_text\" are all null. An empty list is []. Most documents lack some fields: null is the expected answer for them.\n6. Reply with JSON only, in the shape below. All keys are required.\n\nThis is the text of one sheet of a project drawing album with a room table (экспликация полов / экспликация помещений / ведомость отделки помещений / xonalar eksplikatsiyasi): tables are given as [TABLE n] blocks with one row per line.\nResponse shape:\n{\"rooms\": [{\"name\": \"<room name as written>\", \"level\": \"<floor or level mark if written, else null>\", \"area\": \"<area number or null>\", \"volume\": \"<volume number if the document states a volume, else null>\", \"unit\": \"<unit of the area or null>\", \"source_text\": \"<fragment copied character by character from that row, containing the name and the area>\"}]}\nNotes:\n- One element per table row that names a room (or a group of rooms) and gives its area. If one row lists several room names, copy the name in full.\n- Skip rows that have no area. Skip total rows (Итого / Всего / Jami). If the sheet has no room areas, return {\"rooms\": []}.\n- \"level\": the floor or level the table (or the row) belongs to, if the sheet says so (e.g. in the table title: \"План подвала на отм. -3.200\").\n- Rule 2 applies to \"area\" and \"volume\" as well: the number alone."
    },
    {
     "role": "user",
@@ -98,9 +98,9 @@
   }
  },
  "response": {
-  "id": "chatcmpl-9b675ca85c782b95",
+  "id": "chatcmpl-8b0c232e9d400e9a",
   "object": "chat.completion",
-  "created": 1795534996,
+  "created": 1795540592,
   "model": "qwen3.8-27b",
   "choices": [
    {
@@ -124,8 +124,8 @@
   "service_tier": null,
   "system_fingerprint": "vllm-0.34.0-d0217734",
   "usage": {
-   "prompt_tokens": 886,
-   "total_tokens": 1510,
+   "prompt_tokens": 911,
+   "total_tokens": 1535,
    "completion_tokens": 624,
    "completion_tokens_details": {
     "reasoning_tokens": 0
