@@ -29,6 +29,12 @@ def normalize(text: str) -> str:
     return _SPACES.sub(" ", text.translate(_TYPOGRAPHY)).strip()
 
 
+def normalize_joined(text: str) -> str:
+    """`normalize`, plus whitespace around hyphens removed: a word broken at a line end
+    ("125-\\nuy") then equals the same word written in one piece ("125-uy")."""
+    return re.sub(r"\s*-\s*", "-", normalize(text))
+
+
 _NUMBER = re.compile(r"^([+\-±]?)(\d+)(?:[.,](\d+))?$")
 
 
@@ -64,12 +70,24 @@ def numbers_in_text(text: str) -> list[tuple[Decimal, bool]]:
     return out
 
 
+_UNIT_WORDS = {"m", "м", "m2", "м2", "m3", "м3", "mm", "sm", "см", "мм", "ta", "dona", "шт", "metr", "метр",
+               "metrni", "kv", "кв", "kub", "куб"}
+_WORD = re.compile(r"[^\W\d_]{3,}")
+
+
+def has_label(source: str) -> bool:
+    """Does the snippet contain a word besides numbers and units (a label, or the name in a table row).
+    A bare number proves nothing about what the number means, so it is not accepted as a source."""
+    return any(w.lower() not in _UNIT_WORDS for w in _WORD.findall(source))
+
+
 def verify_source(value: str | None, source: str | None, page_texts: list[str],
                   numeric: bool) -> tuple[str, str, Decimal | None]:
     """Verify a value against its source -> (status, reason, number).
 
     1) the source snippet must occur verbatim in the page text;
-    2) a numeric value must be entirely a number and equal one of the numbers in the snippet;
+    2) a numeric value must be entirely a number and equal one of the numbers in the snippet,
+       and the snippet must carry a label (not just numbers);
        a textual value must occur verbatim inside the snippet.
     """
     if value is None or not str(value).strip():
@@ -78,14 +96,18 @@ def verify_source(value: str | None, source: str | None, page_texts: list[str],
         return UNVERIFIED, "manba matni berilmagan", None
     src = normalize(source)
     if not any(src in normalize(t) for t in page_texts):
-        return UNVERIFIED, "manba matni sahifa matnida so'zma-so'z topilmadi", None
+        joined = normalize_joined(source)
+        if not any(joined in normalize_joined(t) for t in page_texts):
+            return UNVERIFIED, "manba matni sahifa matnida so'zma-so'z topilmadi", None
     if not numeric:
-        if normalize(str(value)) not in src:
+        if normalize(str(value)) not in src and normalize_joined(str(value)) not in normalize_joined(source):
             return UNVERIFIED, "qiymat manba parchasida so'zma-so'z uchramaydi", None
         return ACCEPTED, "", None
     number = parse_number(str(value))
     if number is None:
         return UNVERIFIED, f"qiymat son emas: {value!r}", None
+    if not has_label(src):
+        return UNVERIFIED, "manba parchasida yorliq yo'q (faqat son) — son nimani bildirishi isbotlanmagan", None
     if not any(v == abs(number) and (number >= 0 or minus) for v, minus in numbers_in_text(src)):
         return UNVERIFIED, f"{value} soni manba parchasidan ajralmadi", None
     return ACCEPTED, "", number

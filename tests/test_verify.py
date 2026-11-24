@@ -139,3 +139,23 @@ def test_model_agreement():
     assert v.model_agreement(a, {"status": "accepted", "number": "36063", "value": "36063"}) == "mismatch"
     assert v.model_agreement(a, {"status": "unverified"}) == "only_1"
     assert v.model_agreement(None, None) == "neither"
+
+
+def test_line_break_after_hyphen_is_tolerated():
+    page = ["Iforli ko'chasi 36-\nmanzilda joylashgan savdo binosi, yerto'la va 3-\nqavatli"]
+    st, _, _ = v.verify_source("Iforli ko'chasi 36-manzilda", "Iforli ko'chasi 36-manzilda joylashgan", page, False)
+    assert st == v.ACCEPTED
+    st, _, num = v.verify_source("3", "yerto'la va 3-qavatli", page, True)
+    assert st == v.ACCEPTED and num == v.Decimal("3")
+    # a different word is still refused
+    assert v.verify_source("37", "Iforli ko'chasi 37-manzilda", page, True)[0] == v.UNVERIFIED
+
+
+def test_bare_number_is_not_a_source():
+    page = ["2 | Tashqi hojatxona | 1 | 21 | 78,54 | 36,96 | 251,37\n2 21 2304,96"]
+    st, reason, _ = v.verify_source("21", "21", page, True)
+    assert st == v.UNVERIFIED and "yorliq yo'q" in reason
+    assert v.verify_source("2", "2 21 2304,96", page, True)[0] == v.UNVERIFIED
+    assert v.verify_source("21", "2 | Tashqi hojatxona | 1 | 21", page, True)[0] == v.ACCEPTED
+    assert v.verify_source("3.0", "3.0 m", ["h = 3.0 m"], True)[0] == v.UNVERIFIED    # a unit is not a label
+    assert v.verify_source("3.0", "Высота этажа - 3.0 м", ["Высота этажа - 3.0 м."], True)[0] == v.ACCEPTED
