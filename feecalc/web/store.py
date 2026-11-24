@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS job (
     error TEXT NOT NULL DEFAULT '',
     result TEXT,                     -- JSON produced by pipeline.run_extraction
     permitted_floors INTEGER,
-    building_index INTEGER,
+    matches TEXT,                    -- JSON: staff pairing of project buildings with conclusion buildings
     calc TEXT,                       -- JSON: coefficient choices
     final TEXT,                      -- JSON: finalized calculation sheet
     finalized_at TEXT
@@ -102,7 +102,7 @@ class Store:
         if row is None:
             return None
         job = dict(row)
-        for key in ("result", "calc", "final"):
+        for key in ("result", "calc", "final", "matches"):
             job[key] = json.loads(job[key]) if job[key] else None
         return job
 
@@ -122,10 +122,10 @@ class Store:
             return [dict(r) for r in c.execute("SELECT * FROM file WHERE job_id = ? ORDER BY id", (job_id,))]
 
     def set_job(self, job_id: int, **fields: object) -> None:
-        allowed = {"status", "stage", "error", "result", "permitted_floors", "building_index", "calc", "final",
+        allowed = {"status", "stage", "error", "result", "permitted_floors", "matches", "calc", "final",
                    "finalized_at"}
         assert fields and set(fields) <= allowed, fields
-        values = [json.dumps(v, ensure_ascii=False) if k in ("result", "calc", "final") and v is not None else v
+        values = [json.dumps(v, ensure_ascii=False) if k in ("result", "calc", "final", "matches") and v is not None else v
                   for k, v in fields.items()]
         with self.connect() as c:
             c.execute(f"UPDATE job SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?", (*values, job_id))

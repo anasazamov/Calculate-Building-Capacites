@@ -6,7 +6,7 @@
   <form method="post" action="/jobs" enctype="multipart/form-data">
     <div class="row">
       <div><label>Ish nomi (ixtiyoriy)</label><input type="text" name="title" size="34" placeholder="masalan: Maysazor, Tip-2"></div>
-      <div><label>Loyiha (AR albomi) — bir yoki bir nechta PDF</label><input type="file" name="project" accept="application/pdf,.pdf" multiple required></div>
+      <div><label>Loyiha albomi — bir yoki bir nechta PDF (bo'lmasa bo'sh qoldiring)</label><input type="file" name="project" accept="application/pdf,.pdf" multiple></div>
       <div><label>Ekspertiza xulosasi — PDF</label><input type="file" name="conclusion" accept="application/pdf,.pdf" required></div>
       <div><button type="submit" {% if not staff %}disabled title="Avval xodim ismini kiriting"{% endif %}>Yuklash va navbatga qo'yish</button></div>
     </div>

@@ -58,7 +58,7 @@ def test_full_flow(client: TestClient, sample_dir: Path):
     assert client.get(f"/jobs/{job}/status").json() == {"status": "ready", "stage": "done", "error": ""}
     page = client.get(f"/jobs/{job}/review")
     assert page.status_code == 200
-    for text in ("36036", "Наманган", "Samarqand", "Tasdiqlanmagan hajmlar bor", "matnsiz"):
+    for text in ("36036", "Наманган", "Samarqand", "Tasdiqlanmagan hajmlar bor", "matnsiz", "Tip-1"):
         assert text in page.text
     project_file = "01_project_demo_project.pdf"
     assert client.get(f"/jobs/{job}/page-image", params={"file": project_file, "page": 1}).headers[
@@ -73,6 +73,15 @@ def test_full_flow(client: TestClient, sample_dir: Path):
     preview = client.post(f"/jobs/{job}/calc/preview", data=CALC).json()
     assert preview["result"] is None and set(preview["missing"]) == {"Hb", "Hyu", "Ha", "Ht", "Hu"}
 
+    # Hb is the sum over the conclusion's buildings; staff leaves the other building out (reason required)
+    from feecalc import pipeline
+    state = client.app.state.store  # type: ignore[attr-defined]
+    view = pipeline.assess(state.job(job)["result"])
+    assert view["volumes"]["Hb"]["proposal"] == "88433.2"
+    other = view["hb_rows"][1]["id"]
+    assert client.post(f"/jobs/{job}/component/{other}", data={"included": "no", "reason": ""}).status_code == 400
+    assert client.post(f"/jobs/{job}/component/{other}",
+                       data={"included": "no", "reason": "Bu ish faqat Tip-2 uchun"}).status_code == 303
     assert client.post(f"/jobs/{job}/volume/Hb/confirm").status_code == 303
     assert client.post(f"/jobs/{job}/volume/Ha/confirm").status_code == 303
     assert client.post(f"/jobs/{job}/volume/Ht/confirm").status_code == 409          # no proposal
@@ -86,8 +95,6 @@ def test_full_flow(client: TestClient, sample_dir: Path):
     assert client.post(f"/jobs/{job}/volume/Hu/confirm").status_code == 303
 
     # changing a component afterwards makes the confirmed Hu stale
-    state = client.app.state.store  # type: ignore[attr-defined]
-    from feecalc import pipeline
     view = pipeline.assess(state.job(job)["result"], {}, 16, None)
     group = [c for c in view["components"] if c["category"] == "Hu" and c["origin"] == "breakdown"][0]
     url = f"/jobs/{job}/component/{group['id']}"
@@ -104,16 +111,20 @@ def test_full_flow(client: TestClient, sample_dir: Path):
     bad = client.post(f"/jobs/{job}/calc/preview", data={**CALC, "kz": "1m+", "kz_value": "3"})
     assert bad.status_code == 422 and "oralig'ida emas" in bad.json()["detail"]
     industrial = client.post(f"/jobs/{job}/calc/preview", data={**CALC, "ko": "industrial"}).json()
-    assert industrial["industrial"] is not None and industrial["coefficients"]["ko"] == "0.5"
+    assert industrial["industrial"]["rows"] and industrial["coefficients"]["ko"] == "0.5"
     assert client.get(f"/jobs/{job}/calc").status_code == 200
 
+    assert client.post(f"/jobs/{job}/match", data={"project_index": "0", "conclusion_index": "0",
+                                                   "reason": "Albom Tip-2 uchun"}).status_code == 303
+    assert client.post(f"/jobs/{job}/match", data={"project_index": "5", "conclusion_index": "0",
+                                                   "reason": "sinov"}).status_code == 400
     assert client.post(f"/jobs/{job}/finalize", data=CALC).status_code == 303
     sheet = client.get(f"/jobs/{job}/sheet.json").json()
     assert sheet["fee"]["result"]["fee"] == "4294208160" and sheet["finalized"]["by"] == "Sinov Xodim"
     assert sheet["models"]["model1"]["vllm_version"] == "replay" and sheet["prompt_hashes"]
     actions = [a["action"] for a in sheet["audit"]]
     for action in ("job_created", "volume_confirmed", "volume_changed", "component_changed",
-                   "permitted_floors_set", "finalized"):
+                   "permitted_floors_set", "building_matched", "finalized"):
         assert action in actions
     assert all(a["time"] and a["user"] == "Sinov Xodim" for a in sheet["audit"])
     html = unescape(client.get(f"/jobs/{job}/sheet").text)
@@ -159,3 +170,17 @@ def test_failed_job_shows_full_error_and_can_retry(client: TestClient, sample_di
 
 def test_whoami_rejects_external_redirect(client: TestClient):
     assert client.post("/whoami", data={"name": "A", "next": "//evil.example"}).status_code == 400
+
+
+def test_conclusion_only_upload(client: TestClient, sample_dir: Path):
+    login(client)
+    with open(sample_dir / "demo_conclusion.pdf", "rb") as k:
+        r = client.post("/jobs", data={"title": "Faqat xulosa"},
+                        files=[("conclusion", ("demo_conclusion.pdf", k, "application/pdf"))])
+    assert r.status_code == 303
+    job = int(r.headers["location"].rsplit("/", 1)[1])
+    shutil.copytree(RAW, client.data_dir / "jobs" / str(job) / "raw")  # type: ignore[attr-defined]
+    client.app.state.run_job(job)  # type: ignore[attr-defined]
+    assert client.get(f"/jobs/{job}/status").json()["status"] == "ready"
+    page = unescape(client.get(f"/jobs/{job}/review").text)
+    assert "Loyiha berilmagan" in page and "Tip-1" in page and "88433,2" in page

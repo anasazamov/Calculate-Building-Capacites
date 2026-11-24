@@ -31,7 +31,8 @@
   {% for g, name in (('kt', 'Kt'), ('ko', 'Ko'), ('kz', 'Kz'), ('kj', 'Kj')) %}<tr><td>{{ name }}</td><td class="n">{{ sheet.fee.coefficients[g] | num }}</td><td>{{ sheet.fee.options[g] }}</td></tr>{% endfor %}
   <tr><td>Kkengash</td><td class="n">{{ sheet.fee.coefficients.k_council | num }}</td><td>Kengash koeffitsiyenti (0,01–1,5)</td></tr>
 </table>
-{% if sheet.fee.industrial %}<p class="small">Sanoat binosi: har qavatning 3 m dan yuqori qismi hajmi jami {{ sheet.fee.industrial.total | num }} m³ (ma'lumot uchun; avtomatik ayirilmagan).</p>{% endif %}
+{% if sheet.fee.industrial %}<p class="small">Sanoat binosi: har qavatning 3 m dan yuqori qismi hajmi jami {{ sheet.fee.industrial.total | num }} m³ (ma'lumot uchun; avtomatik ayirilmagan).
+{% for f in sheet.fee.industrial.rows %}<br>{{ f.name }}: hajm {{ f.volume | num }}; qurilish maydoni {{ f.footprint | num }} × 3 m × {{ f.floors | num }} qavat = {{ f.within_3m | num }}; 3 m dan yuqori qism {{ f.excess | num }} m³{% endfor %}</p>{% endif %}
 
 <h2>2. Hajmlar</h2>
 <table>
@@ -44,7 +45,13 @@
   {% endfor %}
 </table>
 {% if sheet.permitted_floors is not none %}<p class="small">Ruxsat etilgan qavatlar soni (xodim kiritgan): {{ sheet.permitted_floors }}.</p>{% endif %}
-<h3>Xonalar va maydon qatorlari</h3>
+<h3>Hb tarkibi: binolar bo'yicha</h3>
+<table>
+  <tr><th>Bino</th><th class="n">Soni</th><th>Loyihada</th><th>Xulosada</th><th>Hisobga olingan hajm</th><th>Kiradi</th></tr>
+  {% for r in sheet.hb_rows %}<tr><td>{{ r.name }}</td><td class="n">{{ r.count | num }}</td><td>{{ val(r.project) }}</td><td>{{ val(r.conclusion) }}</td>
+    <td class="small">{{ r.formula }}{% if r.override %}<br>✎ {{ r.override.user }}, {{ r.override.time }}: {{ r.override.reason }}{% endif %}</td><td>{{ 'ha' if r.included else "yo'q" }}</td></tr>{% endfor %}
+</table>
+{% if sheet.components %}<h3>Xonalar va maydon qatorlari</h3>
 <table>
   <tr><th>Nomi</th><th>Sath</th><th class="n">Maydon, m²</th><th>Toifa</th><th>Hajm</th><th>Kiradi</th><th>Manba</th></tr>
   {% for c in sheet.components %}
@@ -53,15 +60,30 @@
     <td class="small">{{ c.formula }}{% if c.override %}<br>✎ {{ c.override.user }}, {{ c.override.time }}: {{ c.override.reason }}{% endif %}</td>
     <td>{{ 'ha' if c.included else "yo'q" }}</td><td class="small">{{ c.file }}, {{ c.page }}-sah.: «{{ c.source_text }}»</td></tr>
   {% endfor %}
-</table>
+</table>{% endif %}
 
 <h2>3. Hujjatlardan o'qilgan qiymatlar va manbalari</h2>
-<p class="small">Bino: {{ sheet.building.note }}.</p>
+{% if not sheet.has_project %}<p class="flag">Loyiha berilmagan: faqat xulosa o'qilgan.</p>{% endif %}
 <table>
   <tr><th>Maydon</th><th>Loyiha</th><th>Xulosa</th><th>Tekshiruv</th></tr>
-  {% for row in sheet['values'] %}<tr><td>{{ row.label }}</td><td>{{ val(row.project) }}</td><td>{{ val(row.conclusion) }}</td>
-    <td>{% if row.check %}{{ CHECK_LABELS[row.check.status] }}{% endif %}{% if row.agreement_project or row.agreement_conclusion %}<div class="small">2-model: {{ AGREEMENT[row.agreement_project] if row.agreement_project else '' }} {{ AGREEMENT[row.agreement_conclusion] if row.agreement_conclusion else '' }}</div>{% endif %}</td></tr>{% endfor %}
+  {% for row in sheet.scalars %}<tr><td>{{ row.label }}</td><td>{{ val(row.project) }}</td><td>{{ val(row.conclusion) }}</td>
+    <td>{% if row.check %}{{ CHECK_LABELS[row.check.status] }}{% endif %}</td></tr>{% endfor %}
 </table>
+{% for b in sheet.buildings %}
+<h3>{{ loop.index }}. {{ b.title }}{% if b.count %} — {{ b.count | num }} dona{% endif %}</h3>
+<p class="small">Juftlash: {{ b.pair.basis }}.</p>
+<table>
+  <tr><th>Ko'rsatkich</th><th>Loyiha</th><th>Xulosa</th><th>Tekshiruv</th></tr>
+  {% for row in b.fields %}<tr><td>{{ row.label }}</td><td>{{ val(row.project) }}</td><td>{{ val(row.conclusion) }}</td>
+    <td>{% if row.check %}{{ CHECK_LABELS[row.check.status] }}{% endif %}{% if row.agreement_project == 'mismatch' or row.agreement_conclusion == 'mismatch' %}<div class="small">2-model: MOS EMAS</div>{% endif %}</td></tr>{% endfor %}
+</table>
+{% endfor %}
+{% if sheet.site.project or sheet.site.conclusion %}
+<h3>Hudud ko'rsatkichlari</h3>
+<table>
+  <tr><th>Hujjat</th><th>Nomi</th><th>Qiymat</th></tr>
+  {% for doc, label in (('project', 'Loyiha'), ('conclusion', 'Xulosa')) %}{% for x in sheet.site[doc] %}<tr><td>{{ label }}</td><td>{{ x.name }}</td><td>{{ val(x) }}</td></tr>{% endfor %}{% endfor %}
+</table>{% endif %}
 
 <h2>4. Tekshiruvlar natijasi</h2>
 <table>

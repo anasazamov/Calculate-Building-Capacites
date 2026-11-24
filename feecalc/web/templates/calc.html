@@ -62,9 +62,9 @@ async function preview() {
   let html = '';
   if (j.industrial) {
     html += `<div class="notice"><b>Sanoat binosi:</b> har qavatning 3 m dan yuqori qismi hajmi — jami ${money(j.industrial.total)} m³. Bu hajm avtomatik ayirilmaydi; qarorni xodim beradi (kerak bo'lsa Hb ni sababi bilan o'zgartiring).`
-      + `<table style="margin-top:6px"><tr><th>Qavat / sath</th><th class="n">Maydon, m²</th><th class="n">Balandlik, m</th><th class="n">3 m dan yuqori hajm, m³</th></tr>`
-      + j.industrial.floors.map((f) => `<tr><td>${esc(f.name)}</td><td class="n">${f.area}</td><td class="n">${f.height}</td><td class="n">${f.excess}</td></tr>`).join('')
-      + (j.industrial.floors.length ? '' : '<tr><td colspan="4" class="muted">Balandligi ma\'lum qavat qatorlari yo\'q.</td></tr>') + '</table></div>';
+      + `<table style="margin-top:6px"><tr><th>Bino</th><th class="n">Hajm, m³</th><th class="n">Qurilish maydoni, m²</th><th class="n">Qavat</th><th class="n">3 m gacha qism, m³</th><th class="n">3 m dan yuqori qism, m³</th></tr>`
+      + j.industrial.rows.map((f) => `<tr><td>${esc(f.name)}</td><td class="n">${f.volume}</td><td class="n">${f.footprint}</td><td class="n">${f.floors}</td><td class="n">${f.within_3m}</td><td class="n">${f.excess}</td></tr>`).join('')
+      + (j.industrial.rows.length ? '' : '<tr><td colspan="6" class="muted">Hajmi va qurilish maydoni ma\'lum bino yo\'q.</td></tr>') + '</table></div>';
   }
   if (j.result) {
     const x = j.result;

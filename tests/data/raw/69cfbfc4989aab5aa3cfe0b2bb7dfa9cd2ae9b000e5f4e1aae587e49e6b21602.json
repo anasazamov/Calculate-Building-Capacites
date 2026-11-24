@@ -1,0 +1,640 @@
+{
+ "model": "model1",
+ "url": "http://127.0.0.1:8001/v1",
+ "time": "2026-11-24T15:44:04",
+ "duration_s": 49.679,
+ "prompt_hash": "1a9d34ccb410f0f739e6256f08a0d230acc00e17c10fa523fe4007e2076d75b8",
+ "request": {
+  "model": "qwen3.8-27b",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You copy data out of construction documents. The document is in Uzbek (Latin or Cyrillic script) or Russian, often mixed.\nStrict rules:\n1. Copy only values that are explicitly written in the given text. Never calculate, sum, multiply, guess, convert or fill in.\n2. \"value\" is a string. For a number it is the number alone, exactly as written in the document (e.g. \"36036\", \"9410.0\", \"600,3\", \"25 457\", \"-3.200\"); do not add units, comparison signs or comments.\n3. \"unit\" is the unit written next to that value, exactly as written (e.g. \"м3\", \"m2\", \"m²\", \"м\"); null if no unit is written.\n4. \"source_text\" is one contiguous fragment copied character by character from the text (up to 150 characters) that contains the value itself, together with its label when the label is next to it. It may run over a line break when the sentence continues on the next line. For a number the fragment must include its label or, in a table, the whole row with the row's name: a fragment made of numbers only is rejected. Do not alter it, skip words in the middle, translate or reorder it. The \" | \" column separator may be kept.\n5. If a value is not in the text: \"value\", \"unit\" and \"source_text\" are all null. An empty list is []. Most documents lack some fields: null is the expected answer for them.\n6. Reply with JSON only, in the shape below. All keys are required.\n\nThis is the text of one sheet of a project drawing album (general data, site plan or similar): tables are given as [TABLE n] blocks with one row per line, followed by the text outside tables (including the title block).\nEvery V below has this shape: {\"value\": \"<string or null>\", \"unit\": \"<string or null>\", \"source_text\": \"<string or null>\"}\nResponse shape:\n{\"project_code\": V, \"addresses\": [V],\n \"site_areas\": [{\"name\": \"<label as written>\", \"kind\": \"total\" | \"built_up\" | \"paving\" | \"greenery\" | \"other\", \"value\": ..., \"unit\": ..., \"source_text\": ...}],\n \"buildings\": [{\"name\": V, \"count\": V, \"floors\": V, \"footprint_area\": V, \"total_area\": V, \"volume\": V, \"volume_above_ground\": V, \"volume_below_ground\": V, \"plan_size\": V, \"apartments\": V}],\n \"area_breakdown\": [{\"name\": \"<row label as written>\", \"level_mark\": \"<level mark such as -3.200, or null>\", \"value\": ..., \"unit\": ..., \"source_text\": ...}],\n \"floor_heights\": [{\"level\": \"<which floor/level, or null>\", \"value\": ..., \"unit\": ..., \"source_text\": ...}]}\nNotes:\n- Many sheets (fire-alarm schemes, plans, details) contain none of this. Then every V is null and every list is [].\n- \"addresses\": every statement of where the object is located that this sheet contains, each as its own element, as written: the address in the object title or title block, and lines such as \"Район строительства: ...\", \"Адрес строительства: ...\", \"Manzil: ...\". Do not merge separate statements. [] if the sheet states no location.\n- \"project_code\": the project code (shifr / шифр), as written.\n- \"site_areas\": the land-plot balance (hudud ko'rsatkichlari / показатели участка): one element per stated area of the site. \"kind\" is: \"total\" for the area of the whole plot (hudud maydoni, yer maydoni, tanlangan yer maydoni / площадь участка); \"built_up\" for the area under buildings (qurilish maydoni, qurilish osti maydoni, binolar osti maydoni / площадь застройки) when stated for the site as a whole; \"paving\" for paving/roads (qoplama maydoni / покрытия); \"greenery\" for landscaping (ko'kalamzorlashtirish, obodonlashtirish / озеленение); \"other\" for anything else. \"name\" is the label as written.\n- \"buildings\": the buildings whose indicators this sheet states. A sheet with technical-economic indicators (технико-экономические показатели) of one building gives one element; a list of buildings and structures (binolar va inshootlar eksplikatsiyasi / экспликация зданий и сооружений) gives one element per row. Do not list buildings that have no number on this sheet.\n- \"name\": the building's name as written; \"count\": the number of such buildings if written (Soni / кол-во); \"floors\": number of storeys (Qavati / этажность).\n- \"footprint_area\": площадь застройки / qurilish osti maydoni; \"total_area\": общая площадь здания / umumiy maydoni; \"volume\": строительный объём (total) / qurilish hajmi; \"volume_above_ground\": надземная часть / выше отм. 0.000; \"volume_below_ground\": подземная часть / ниже отм. 0.000.\n- \"plan_size\": the building's dimensions in plan (размеры в осях), as written. \"apartments\": количество квартир / xonadonlar soni.\n- \"area_breakdown\": for a single building, the rows that make up its total area: areas by level, by floor or by room group (e.g. подвал, 1-этаж, 2–16 этажи, лестничная клетка etc., технические помещения). One element per row; the grand-total row goes to \"total_area\", not here. Do not merge or split rows.\n- \"floor_heights\": floor heights explicitly written in the text (высота этажа / qavat balandligi), in metres. A range gives two elements."
+   },
+   {
+    "role": "user",
+    "content": "Text:\n[TABLE 1]\nНаименование | Ед. изм. | Количество\nПлощадь застройки | м2 | 600.3\nСтроительный объём | м3 | 36036\nв том числе надземная часть | м3 | 34619.3\nподземная часть | м3 | 1416.7\nПодвал на отм. -3.200 | м2 | 465.9\n1-этаж | м2 | 442.6\n2–16 этажи | м2 | 7439.3\nОбщая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная) | м2 | 1026.4\nТех. помещения на отм. +52.420 | м2 | 35.8\nОбщая площадь здания | м2 | 9410.0\nКоличество квартир | шт | 96\n\n[TABLE 2]\n16-ти этажный жилой дом Тип-2 | Стадия РП\nОбщие данные | Лист 1\n\n[TEXT OUTSIDE TABLES]\nОбщие данные\nТехнико-экономические показатели\nВысота этажа - 3.0 м. Высота подвала - 3.2 м.\nЖилой комплекс. г. Наманган, ул. Темир йул"
+   }
+  ],
+  "max_tokens": 6144,
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "answer",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "project_code": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text"
+       ],
+       "additionalProperties": false
+      },
+      "addresses": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "value": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "source_text": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         }
+        },
+        "required": [
+         "value",
+         "unit",
+         "source_text"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "site_areas": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "maxLength": 250
+         },
+         "kind": {
+          "type": "string",
+          "enum": [
+           "total",
+           "built_up",
+           "paving",
+           "greenery",
+           "other"
+          ]
+         },
+         "value": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "source_text": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         }
+        },
+        "required": [
+         "name",
+         "kind",
+         "value",
+         "unit",
+         "source_text"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "buildings": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "count": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "floors": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "footprint_area": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "total_area": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "volume": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "volume_above_ground": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "volume_below_ground": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "plan_size": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         },
+         "apartments": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text"
+          ],
+          "additionalProperties": false
+         }
+        },
+        "required": [
+         "name",
+         "count",
+         "floors",
+         "footprint_area",
+         "total_area",
+         "volume",
+         "volume_above_ground",
+         "volume_below_ground",
+         "plan_size",
+         "apartments"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "area_breakdown": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "maxLength": 250
+         },
+         "level_mark": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "value": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "source_text": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         }
+        },
+        "required": [
+         "name",
+         "level_mark",
+         "value",
+         "unit",
+         "source_text"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "floor_heights": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "level": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "value": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "source_text": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         }
+        },
+        "required": [
+         "level",
+         "value",
+         "unit",
+         "source_text"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "project_code",
+      "addresses",
+      "site_areas",
+      "buildings",
+      "area_breakdown",
+      "floor_heights"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0,
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "response": {
+  "id": "chatcmpl-9b178f3e51e49275",
+  "object": "chat.completion",
+  "created": 1795534998,
+  "model": "qwen3.8-27b",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\n  \"project_code\": {\n    \"value\": null,\n    \"unit\": null,\n    \"source_text\": null\n  },\n  \"addresses\": [\n    {\n      \"value\": \"г. Наманган, ул. Темир йул\",\n      \"unit\": null,\n      \"source_text\": \"Жилой комплекс. г. Наманган, ул. Темир йул\"\n    }\n  ],\n  \"site_areas\": [],\n  \"buildings\": [\n    {\n      \"name\": {\n        \"value\": \"16-ти этажный жилой дом Тип-2\",\n        \"unit\": null,\n        \"source_text\": \"16-ти этажный жилой дом Тип-2 | Стадия РП\"\n      },\n      \"count\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null\n      },\n      \"floors\": {\n        \"value\": \"16\",\n        \"unit\": null,\n        \"source_text\": \"16-ти этажный жилой дом Тип-2\"\n      },\n      \"footprint_area\": {\n        \"value\": \"600.3\",\n        \"unit\": \"м2\",\n        \"source_text\": \"Площадь застройки | м2 | 600.3\"\n      },\n      \"total_area\": {\n        \"value\": \"9410.0\",\n        \"unit\": \"м2\",\n        \"source_text\": \"Общая площадь здания | м2 | 9410.0\"\n      },\n      \"volume\": {\n        \"value\": \"36036\",\n        \"unit\": \"м3\",\n        \"source_text\": \"Строительный объём | м3 | 36036\"\n      },\n      \"volume_above_ground\": {\n        \"value\": \"34619.3\",\n        \"unit\": \"м3\",\n        \"source_text\": \"в том числе надземная часть | м3 | 34619.3\"\n      },\n      \"volume_below_ground\": {\n        \"value\": \"1416.7\",\n        \"unit\": \"м3\",\n        \"source_text\": \"подземная часть | м3 | 1416.7\"\n      },\n      \"plan_size\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null\n      },\n      \"apartments\": {\n        \"value\": \"96\",\n        \"unit\": \"шт\",\n        \"source_text\": \"Количество квартир | шт | 96\"\n      }\n    }\n  ],\n  \"area_breakdown\": [\n    {\n      \"name\": \"Подвал на отм. -3.200\",\n      \"level_mark\": \"-3.200\",\n      \"value\": \"465.9\",\n      \"unit\": \"м2\",\n      \"source_text\": \"Подвал на отм. -3.200 | м2 | 465.9\"\n    },\n    {\n      \"name\": \"1-этаж\",\n      \"level_mark\": null,\n      \"value\": \"442.6\",\n      \"unit\": \"м2\",\n      \"source_text\": \"1-этаж | м2 | 442.6\"\n    },\n    {\n      \"name\": \"2–16 этажи\",\n      \"level_mark\": null,\n      \"value\": \"7439.3\",\n      \"unit\": \"м2\",\n      \"source_text\": \"2–16 этажи | м2 | 7439.3\"\n    },\n    {\n      \"name\": \"Общая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная)\",\n      \"level_mark\": null,\n      \"value\": \"1026.4\",\n      \"unit\": \"м2\",\n      \"source_text\": \"Общая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная) | м2 | 1026.4\"\n    },\n    {\n      \"name\": \"Тех. помещения на отм. +52.420\",\n      \"level_mark\": \"+52.420\",\n      \"value\": \"35.8\",\n      \"unit\": \"м2\",\n      \"source_text\": \"Тех. помещения на отм. +52.420 | м2 | 35.8\"\n    }\n  ],\n  \"floor_heights\": [\n    {\n      \"level\": \"этаж\",\n      \"value\": \"3.0\",\n      \"unit\": \"м\",\n      \"source_text\": \"Высота этажа - 3.0 м.\"\n    },\n    {\n      \"level\": \"подвал\",\n      \"value\": \"3.2\",\n      \"unit\": \"м\",\n      \"source_text\": \"Высота подвала - 3.2 м.\"\n    }\n  ]\n}",
+     "refusal": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "stop",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null,
+    "weight_versions": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.34.0-d0217734",
+  "usage": {
+   "prompt_tokens": 1708,
+   "total_tokens": 2898,
+   "completion_tokens": 1190,
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

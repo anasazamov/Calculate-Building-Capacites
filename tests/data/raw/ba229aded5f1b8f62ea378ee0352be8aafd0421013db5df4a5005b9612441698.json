@@ -1,0 +1,1015 @@
+{
+ "model": "model1",
+ "url": "http://127.0.0.1:8001/v1",
+ "time": "2026-11-24T15:46:35",
+ "duration_s": 74.597,
+ "prompt_hash": "77c97af2bdf910dd8a56fc5c68366d8ba46752ce24aa11bc44c962f30b257da2",
+ "request": {
+  "model": "qwen3.8-27b",
+  "messages": [
+   {
+    "role": "system",
+    "content": "You copy data out of construction documents. The document is in Uzbek (Latin or Cyrillic script) or Russian, often mixed.\nStrict rules:\n1. Copy only values that are explicitly written in the given text. Never calculate, sum, multiply, guess, convert or fill in.\n2. \"value\" is a string. For a number it is the number alone, exactly as written in the document (e.g. \"36036\", \"9410.0\", \"600,3\", \"25 457\", \"-3.200\"); do not add units, comparison signs or comments.\n3. \"unit\" is the unit written next to that value, exactly as written (e.g. \"м3\", \"m2\", \"m²\", \"м\"); null if no unit is written.\n4. \"source_text\" is one contiguous fragment copied character by character from the text (up to 150 characters) that contains the value itself, together with its label when the label is next to it. It may run over a line break when the sentence continues on the next line. For a number the fragment must include its label or, in a table, the whole row with the row's name: a fragment made of numbers only is rejected. Do not alter it, skip words in the middle, translate or reorder it. The \" | \" column separator may be kept.\n5. If a value is not in the text: \"value\", \"unit\" and \"source_text\" are all null. An empty list is []. Most documents lack some fields: null is the expected answer for them.\n6. Reply with JSON only, in the shape below. All keys are required.\n\nThis is the text of a state expertise conclusion (ekspertiza xulosasi / экспертное заключение). Pages are separated by [[PAGE n]] markers; for each value put the number of the page where it was found into \"page\".\nEvery V below has this shape: {\"value\": \"<string or null>\", \"unit\": \"<string or null>\", \"source_text\": \"<string or null>\", \"page\": <n from the [[PAGE n]] marker, or null>}\nResponse shape:\n{\"conclusion_number\": V, \"conclusion_date\": V, \"application_number\": V, \"address\": V, \"customer\": V, \"construction_type\": V,\n \"site_areas\": [{\"name\": \"<label as written>\", \"kind\": \"total\" | \"built_up\" | \"paving\" | \"greenery\" | \"other\", \"value\": ..., \"unit\": ..., \"source_text\": ..., \"page\": ...}],\n \"buildings\": [{\"name\": V, \"type\": V, \"count\": V, \"floors\": V, \"footprint_area\": V, \"total_area\": V, \"usable_area\": V, \"volume\": V, \"plan_size\": V, \"apartments\": V, \"reference\": V,\n   \"floor_heights\": [{\"level\": \"<which floor/level as written, or null>\", \"value\": ..., \"unit\": ..., \"source_text\": ..., \"page\": ...}]}],\n \"totals\": {\"footprint_area\": V, \"total_area\": V, \"volume\": V}}\nNotes:\n- \"conclusion_number\": the number of the conclusion itself; \"application_number\": the application number (murojaat raqami); \"conclusion_date\": its date as written.\n- \"customer\": the customer / developer (buyurtmachi / заказчик). \"construction_type\": new construction, reconstruction, renovation etc. (yangi qurilish, rekonstruksiya, renovatsiya), as written.\n- \"address\": the address of the object as written (region, district/city, street).\n- \"site_areas\": the land-plot balance (hudud ko'rsatkichlari / показатели участка): one element per stated area of the site. \"kind\" is: \"total\" for the area of the whole plot (hudud maydoni, yer maydoni, tanlangan yer maydoni / площадь участка); \"built_up\" for the area under buildings (qurilish maydoni, qurilish osti maydoni, binolar osti maydoni / площадь застройки) when stated for the site as a whole; \"paving\" for paving/roads (qoplama maydoni / покрытия); \"greenery\" for landscaping (ko'kalamzorlashtirish, obodonlashtirish / озеленение); \"other\" for anything else. \"name\" is the label as written.\n- \"buildings\": one element for every building, block or structure whose indicators are described (in a table row or in a text section such as \"Blok №1 - ...\"). Describe each building once, even if its section continues on the next page or it is mentioned again later. Keep them in document order.\n- \"name\": the building's name as written (e.g. \"Blok №3 – Ayvon\", \"2-tip\"); \"type\": its kind if written separately (e.g. a \"turi\" column), else null.\n- \"count\": how many identical buildings of this kind, only if written (e.g. \"21 dona\"); else null.\n- \"floors\": number of storeys (qavatlar soni / этажность) as a number; \"apartments\": number of apartments (xonadonlar soni).\n- \"footprint_area\": the building's built-up area (qurilish maydoni / qurilish osti maydoni / площадь застройки); \"total_area\": total floor area (umumiy maydon / общая площадь); \"usable_area\": usable area (foydali maydon / полезная площадь); \"volume\": building volume (qurilish hajmi / строительный объём). In a table the columns usually go: type, name, floors, footprint area, total area, volume.\n- A volume is still a volume when its unit is misprinted (e.g. \"Qurilish hajmi – 10640,00 m2\"): copy the value and the unit as written.\n- \"plan_size\": the building's dimensions in plan, as written (e.g. \"26.97 × 26.89\", \"1,6x15,5\").\n- \"reference\": if the document gives no numbers for a building and instead says it is the same as another one (e.g. \"Blok №3 bilan bir xil\"), copy that statement here and leave the number fields null. Never copy the other building's numbers.\n- \"floor_heights\": one element for each height stated for the building, in metres: storey heights, basement, attic/mansard, hall or shed height, foundation/plinth height. \"level\" says what the height refers to, in the document's words. A range such as \"7,0 – 10,9\" gives two elements (the lower and the upper value).\n- \"totals\": the total row of the buildings table (\"Jami\" / \"Итого\" / \"Всего\") if there is one. It is not a building."
+   },
+   {
+    "role": "user",
+    "content": "Text:\n[[PAGE 1]]\nDAVLAT EKSPERTIZASI XULOSASI № 284459\nSana: 12.10.2026\nBuyurtmachi: «Namuna Qurilish Invest» MChJ\nObyekt manzili: Samarqand shahri, Maysazor ko'chasi\nQurilish turi: Yangi qurilish\nBino va inshootlar\nTuri | Nomi Qavati Qurilish maydoni, m2 | Umumiy maydoni, m2 | Hajmi, m2\nTurar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\nTurar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\nJami | 1412.8 | 19390.4 | 88433.2\n[[PAGE 2]]\nAsosiy texnik ko'rsatkichlar\nTip-2 turar joy binosi 16 qavatli, tarxdagi o'lchami 26.97 × 26.89 m.\nTip-2: xonadonlar soni 96 ta.\nTip-2: yerto'la balandligi 3.2 m, turar joy qavatlari balandligi 3.0 m.\nTip-1 turar joy binosi 12 qavatli, tarxdagi o'lchami 30.20 × 27.10 m, xonadonlar soni 88 ta."
+   }
+  ],
+  "max_tokens": 12000,
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "answer",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "conclusion_number": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "page": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text",
+        "page"
+       ],
+       "additionalProperties": false
+      },
+      "conclusion_date": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "page": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text",
+        "page"
+       ],
+       "additionalProperties": false
+      },
+      "application_number": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "page": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text",
+        "page"
+       ],
+       "additionalProperties": false
+      },
+      "address": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "page": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text",
+        "page"
+       ],
+       "additionalProperties": false
+      },
+      "customer": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "page": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text",
+        "page"
+       ],
+       "additionalProperties": false
+      },
+      "construction_type": {
+       "type": "object",
+       "properties": {
+        "value": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "source_text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "maxLength": 250
+        },
+        "page": {
+         "type": [
+          "integer",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "value",
+        "unit",
+        "source_text",
+        "page"
+       ],
+       "additionalProperties": false
+      },
+      "site_areas": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "maxLength": 250
+         },
+         "kind": {
+          "type": "string",
+          "enum": [
+           "total",
+           "built_up",
+           "paving",
+           "greenery",
+           "other"
+          ]
+         },
+         "value": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "source_text": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 250
+         },
+         "page": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        },
+        "required": [
+         "name",
+         "kind",
+         "value",
+         "unit",
+         "source_text",
+         "page"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "buildings": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "type": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "count": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "floors": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "footprint_area": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "total_area": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "usable_area": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "volume": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "plan_size": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "apartments": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "reference": {
+          "type": "object",
+          "properties": {
+           "value": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "unit": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "source_text": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "maxLength": 250
+           },
+           "page": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           }
+          },
+          "required": [
+           "value",
+           "unit",
+           "source_text",
+           "page"
+          ],
+          "additionalProperties": false
+         },
+         "floor_heights": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "level": {
+             "type": [
+              "string",
+              "null"
+             ],
+             "maxLength": 250
+            },
+            "value": {
+             "type": [
+              "string",
+              "null"
+             ],
+             "maxLength": 250
+            },
+            "unit": {
+             "type": [
+              "string",
+              "null"
+             ],
+             "maxLength": 250
+            },
+            "source_text": {
+             "type": [
+              "string",
+              "null"
+             ],
+             "maxLength": 250
+            },
+            "page": {
+             "type": [
+              "integer",
+              "null"
+             ]
+            }
+           },
+           "required": [
+            "level",
+            "value",
+            "unit",
+            "source_text",
+            "page"
+           ],
+           "additionalProperties": false
+          }
+         }
+        },
+        "required": [
+         "name",
+         "type",
+         "count",
+         "floors",
+         "footprint_area",
+         "total_area",
+         "usable_area",
+         "volume",
+         "plan_size",
+         "apartments",
+         "reference",
+         "floor_heights"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "totals": {
+       "type": "object",
+       "properties": {
+        "footprint_area": {
+         "type": "object",
+         "properties": {
+          "value": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "unit": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "source_text": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "page": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          }
+         },
+         "required": [
+          "value",
+          "unit",
+          "source_text",
+          "page"
+         ],
+         "additionalProperties": false
+        },
+        "total_area": {
+         "type": "object",
+         "properties": {
+          "value": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "unit": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "source_text": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "page": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          }
+         },
+         "required": [
+          "value",
+          "unit",
+          "source_text",
+          "page"
+         ],
+         "additionalProperties": false
+        },
+        "volume": {
+         "type": "object",
+         "properties": {
+          "value": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "unit": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "source_text": {
+           "type": [
+            "string",
+            "null"
+           ],
+           "maxLength": 250
+          },
+          "page": {
+           "type": [
+            "integer",
+            "null"
+           ]
+          }
+         },
+         "required": [
+          "value",
+          "unit",
+          "source_text",
+          "page"
+         ],
+         "additionalProperties": false
+        }
+       },
+       "required": [
+        "footprint_area",
+        "total_area",
+        "volume"
+       ],
+       "additionalProperties": false
+      }
+     },
+     "required": [
+      "conclusion_number",
+      "conclusion_date",
+      "application_number",
+      "address",
+      "customer",
+      "construction_type",
+      "site_areas",
+      "buildings",
+      "totals"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0,
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "response": {
+  "id": "chatcmpl-bdb7a726ece82e93",
+  "object": "chat.completion",
+  "created": 1795535120,
+  "model": "qwen3.8-27b",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\n  \"conclusion_number\": {\n    \"value\": \"284459\",\n    \"unit\": null,\n    \"source_text\": \"DAVLAT EKSPERTIZASI XULOSASI № 284459\",\n    \"page\": 1\n  },\n  \"conclusion_date\": {\n    \"value\": \"12.10.2026\",\n    \"unit\": null,\n    \"source_text\": \"Sana: 12.10.2026\",\n    \"page\": 1\n  },\n  \"application_number\": {\n    \"value\": null,\n    \"unit\": null,\n    \"source_text\": null,\n    \"page\": null\n  },\n  \"address\": {\n    \"value\": \"Samarqand shahri, Maysazor ko'chasi\",\n    \"unit\": null,\n    \"source_text\": \"Obyekt manzili: Samarqand shahri, Maysazor ko'chasi\",\n    \"page\": 1\n  },\n  \"customer\": {\n    \"value\": \"«Namuna Qurilish Invest» MChJ\",\n    \"unit\": null,\n    \"source_text\": \"Buyurtmachi: «Namuna Qurilish Invest» MChJ\",\n    \"page\": 1\n  },\n  \"construction_type\": {\n    \"value\": \"Yangi qurilish\",\n    \"unit\": null,\n    \"source_text\": \"Qurilish turi: Yangi qurilish\",\n    \"page\": 1\n  },\n  \"site_areas\": [],\n  \"buildings\": [\n    {\n      \"name\": {\n        \"value\": \"Tip-2\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"type\": {\n        \"value\": \"Turar joy binosi\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"count\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floors\": {\n        \"value\": \"16\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"footprint_area\": {\n        \"value\": \"600.3\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"total_area\": {\n        \"value\": \"9410.0\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"usable_area\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"volume\": {\n        \"value\": \"36036.0\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"plan_size\": {\n        \"value\": \"26.97 × 26.89\",\n        \"unit\": \"m\",\n        \"source_text\": \"Tip-2 turar joy binosi 16 qavatli, tarxdagi o'lchami 26.97 × 26.89 m.\",\n        \"page\": 2\n      },\n      \"apartments\": {\n        \"value\": \"96\",\n        \"unit\": \"ta\",\n        \"source_text\": \"Tip-2: xonadonlar soni 96 ta.\",\n        \"page\": 2\n      },\n      \"reference\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floor_heights\": [\n        {\n          \"level\": \"yerto'la\",\n          \"value\": \"3.2\",\n          \"unit\": \"m\",\n          \"source_text\": \"Tip-2: yerto'la balandligi 3.2 m, turar joy qavatlari balandligi 3.0 m.\",\n          \"page\": 2\n        },\n        {\n          \"level\": \"turar joy qavatlari\",\n          \"value\": \"3.0\",\n          \"unit\": \"m\",\n          \"source_text\": \"Tip-2: yerto'la balandligi 3.2 m, turar joy qavatlari balandligi 3.0 m.\",\n          \"page\": 2\n        }\n      ]\n    },\n    {\n      \"name\": {\n        \"value\": \"Tip-1\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"type\": {\n        \"value\": \"Turar joy binosi\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"count\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floors\": {\n        \"value\": \"12\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"footprint_area\": {\n        \"value\": \"812.5\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"total_area\": {\n        \"value\": \"9980.4\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"usable_area\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"volume\": {\n        \"value\": \"52397.2\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"plan_size\": {\n        \"value\": \"30.20 × 27.10\",\n        \"unit\": \"m\",\n        \"source_text\": \"Tip-1 turar joy binosi 12 qavatli, tarxdagi o'lchami 30.20 × 27.10 m, xonadonlar soni 88 ta.\",\n        \"page\": 2\n      },\n      \"apartments\": {\n        \"value\": \"88\",\n        \"unit\": \"ta\",\n        \"source_text\": \"Tip-1 turar joy binosi 12 qavatli, tarxdagi o'lchami 30.20 × 27.10 m, xonadonlar soni 88 ta.\",\n        \"page\": 2\n      },\n      \"reference\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floor_heights\": []\n    }\n  ],\n  \"totals\": {\n    \"footprint_area\": {\n      \"value\": \"1412.8\",\n      \"unit\": \"m2\",\n      \"source_text\": \"Jami | 1412.8 | 19390.4 | 88433.2\",\n      \"page\": 1\n    },\n    \"total_area\": {\n      \"value\": \"19390.4\",\n      \"unit\": \"m2\",\n      \"source_text\": \"Jami | 1412.8 | 19390.4 | 88433.2\",\n      \"page\": 1\n    },\n    \"volume\": {\n      \"value\": \"88433.2\",\n      \"unit\": \"m2\",\n      \"source_text\": \"Jami | 1412.8 | 19390.4 | 88433.2\",\n      \"page\": 1\n    }\n  }\n}",
+     "refusal": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "stop",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null,
+    "weight_versions": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.34.0-d0217734",
+  "usage": {
+   "prompt_tokens": 1962,
+   "total_tokens": 4297,
+   "completion_tokens": 2335,
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

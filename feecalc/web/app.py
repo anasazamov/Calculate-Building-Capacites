@@ -128,7 +128,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
 
     def build_view(job: dict) -> dict:
         """Assessment plus the state of staff decisions."""
-        a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["building_index"])
+        a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["matches"])
         decisions = store.decisions(job["id"])
         states: dict[str, dict] = {}
         for code in volumes.VOLUME_CODES:
@@ -160,11 +160,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
                      "options": {g: fee.option(g, calc[g]).text for g in ("kt", "ko", "kz", "kj")},
                      "result": None, "industrial": None}
         if calc["ko"] == "industrial":
-            floors, total = fee.industrial_3m_indicator(
-                [(n, Decimal(a), Decimal(h)) for n, a, h in view["industrial_floors"]])
-            out["industrial"] = {"total": str(total), "floors": [
-                {"name": f.name, "area": str(f.area), "height": str(f.height), "excess": str(f.excess_volume)}
-                for f in floors]}
+            out["industrial"] = view["industrial"]
         if missing:
             return out
         v = {c: Decimal(view["decisions"][c]["value"]) for c in volumes.VOLUME_CODES}
@@ -188,9 +184,9 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
             "models": result["models"], "prompt_version": result["prompt_version"],
             "prompt_hashes": sorted({r["prompt_hash"] for r in requests}),
             "requests": [{k: r[k] for k in ("key", "prompt_hash", "model", "kind", "file", "pages")} for r in requests],
-            "building": {"index": view["building_index"], "note": view["building_note"]},
-            "values": view["rows"], "checks": view["checks"], "warnings": result["warnings"],
-            "components": view["components"],
+            "has_project": view["has_project"], "scalars": view["scalar_rows"], "buildings": view["buildings"],
+            "site": view["site"], "totals": view["totals"], "checks": view["checks"],
+            "warnings": result["warnings"], "hb_rows": view["hb_rows"], "components": view["components"],
             "volumes": {c: {"label": volumes.VOLUME_LABELS[c], "proposal": view["volumes"][c]["proposal"],
                             "formula": view["volumes"][c]["formula"], "notes": view["volumes"][c]["notes"],
                             "decision": view["decisions"][c]["decision"]} for c in volumes.VOLUME_CODES},
@@ -222,10 +218,11 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
         return r
 
     @app.post("/jobs")
-    async def create_job(request: Request, title: str = Form(""), project: list[UploadFile] = File(...),
-                         conclusion: UploadFile = File(...)) -> Response:
+    async def create_job(request: Request, title: str = Form(""), conclusion: UploadFile = File(...),
+                         project: list[UploadFile] = File(default_factory=list)) -> Response:
         user = require_staff(request)
-        uploads = [("project", f) for f in project] + [("conclusion", conclusion)]
+        # the project is optional: a conclusion alone can be read ("project not provided")
+        uploads = [("project", f) for f in project if f.filename] + [("conclusion", conclusion)]
         for _role, f in uploads:
             if not (f.filename or "").lower().endswith(".pdf"):
                 raise HTTPException(400, f"Faqat PDF qabul qilinadi: {f.filename!r}")
@@ -267,7 +264,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
         job = get_job(job_id, need_result=True)
         return templates.TemplateResponse(request, "review.html", {
             "job": job, "view": build_view(job), "result": job["result"], "staff": staff(request),
-            "conclusion_buildings": job["result"]["conclusion"]["model1"]["buildings"]})
+            "locked": job["status"] == "finalized", "two": "model2" in job["result"]["models"],
+            "SITE_KIND_LABELS": extract.SITE_KIND_LABELS})
 
     def find_page(job: dict, file_name: str, page: int) -> tuple[dict, dict]:
         for f in job["result"]["files"]:
@@ -293,14 +291,25 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
                 "textless": p["textless"]}
 
     # ---------- staff decisions ----------
-    @app.post("/jobs/{job_id}/building")
-    def set_building(request: Request, job_id: int, index: int = Form(...)) -> Response:
+    @app.post("/jobs/{job_id}/match")
+    def set_match(request: Request, job_id: int, project_index: int = Form(...), conclusion_index: int = Form(...),
+                  reason: str = Form("")) -> Response:
+        """Staff pairs a project building with a conclusion building (-1: no pair)."""
         user = require_staff(request)
         job = get_job(job_id, need_result=True, editable=True)
-        pipeline.choose_building(job["result"]["project"]["model1"], job["result"]["conclusion"]["model1"], index)
-        store.set_job(job_id, building_index=index)
-        store.audit(job_id, user, "building_chosen", old=str(job["building_index"]), new=str(index))
-        return back(job_id, "fields")
+        view = build_view(job)
+        if not 0 <= project_index < len(view["project_buildings"]):
+            raise HTTPException(400, "Loyihadagi bino indeksi noto'g'ri")
+        if not -1 <= conclusion_index < len(view["conclusion_buildings"]):
+            raise HTTPException(400, "Xulosadagi bino indeksi noto'g'ri")
+        why = reason_field(reason)
+        matches = dict(job["matches"] or {})
+        old = matches.get(str(project_index))
+        matches[str(project_index)] = conclusion_index
+        store.set_job(job_id, matches=matches)
+        store.audit(job_id, user, "building_matched", target=view["project_buildings"][project_index],
+                    old="" if old is None else str(old), new=str(conclusion_index), reason=why)
+        return back(job_id, "buildings")
 
     @app.post("/jobs/{job_id}/floors")
     def set_floors(request: Request, job_id: int, permitted_floors: str = Form(...)) -> Response:
@@ -319,7 +328,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
         user = require_staff(request)
         job = get_job(job_id, need_result=True, editable=True)
         view = build_view(job)
-        current = [c for c in view["components"] if c["id"] == component_id]
+        current = [c for c in view["components"] + view["hb_rows"] if c["id"] == component_id]
         if not current:
             raise HTTPException(404, "Bunday komponent yo'q")
         data: dict = {"reason": reason_field(reason), "user": user, "time": now()}
@@ -340,7 +349,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
         store.audit(job_id, user, "component_changed", target=f"{current[0]['name']} [{component_id}]",
                     old=json.dumps(old, ensure_ascii=False), new=json.dumps(data, ensure_ascii=False),
                     reason=data["reason"])
-        return back(job_id, "components")
+        return back(job_id, "vol-Hb" if any(r["id"] == component_id for r in view["hb_rows"]) else "components")
 
     @app.post("/jobs/{job_id}/volume/{code}/confirm")
     def confirm_volume(request: Request, job_id: int, code: str) -> Response:

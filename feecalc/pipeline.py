@@ -14,6 +14,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from . import classify, extract, ingest, llm, verify, volumes
+from .fee import fmt_num
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("ingest", "Sahifalarni o'qish (matn qatlami va rasm)"),
@@ -50,7 +51,11 @@ def classify_sheets(m: llm.Model, pages: list[ingest.Page], raw_dir: Path) -> di
 
 def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path,
                    progress: Progress = lambda stage: None) -> dict:
-    """Read both documents with every available model. Any failure propagates to the job boundary."""
+    """Read both documents with every available model. Any failure propagates to the job boundary.
+
+    `project_pdfs` may be empty: then only the conclusion is read and every comparison stays
+    in the "project not provided" state.
+    """
     m1 = llm.model1()
     if not llm.server_ready(m1):
         raise llm.ModelError(f"1-model serveri tayyor emas: {m1.url}")
@@ -58,7 +63,6 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     models = [m1] + ([m2] if llm.server_ready(m2) else [])
     raw_dir, image_dir = job_dir / "raw", job_dir / "images"
     timing: dict[str, float] = {}
-    warnings: list[str] = []
 
     start = time.monotonic()
     progress("ingest")
@@ -77,24 +81,31 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
                   "sha256": ingest.sha256_file(conclusion_pdf),
                   "pages": [_page_meta(p, None) for p in conclusion_pages]})
 
+    # Each document is read separately; the two models run side by side (separate servers).
+    def read_all(reader: Callable[[llm.Model], dict]) -> dict[str, dict]:
+        with ThreadPoolExecutor(max_workers=len(models)) as pool:
+            return dict(zip([m.key for m in models], pool.map(reader, models)))
+
     start = time.monotonic()
     progress("project")
-    project = {m.key: extract.read_project(m, project_files, raw_dir) for m in models}
+    project = read_all(lambda m: extract.read_project(m, project_files, raw_dir)) if project_files else {}
     timing["project"] = time.monotonic() - start
 
     start = time.monotonic()
     progress("conclusion")
-    conclusion = {m.key: extract.read_conclusion(m, conclusion_pages, raw_dir) for m in models}
+    conclusion = read_all(lambda m: extract.read_conclusion(m, conclusion_pages, raw_dir))
     timing["conclusion"] = time.monotonic() - start
 
     start = time.monotonic()
     progress("categories")
-    pm = project["model1"]
-    unknown = sorted(
-        {x["name"] for x in pm["area_breakdown"]
-         if volumes.needs_model_suggestion(x["name"], "breakdown", x["name"], x.get("level_mark"))}
-        | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
-    suggestions = extract.suggest_categories(m1, unknown, raw_dir) if unknown else {}
+    suggestions: dict[str, str] = {}
+    if project:
+        pm = project["model1"]
+        unknown = sorted(
+            {x["name"] for x in pm["area_breakdown"]
+             if volumes.needs_model_suggestion(x["name"], "breakdown", x["name"], x.get("level_mark"))}
+            | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
+        suggestions = extract.suggest_categories(m1, unknown, raw_dir) if unknown else {}
     timing["categories"] = time.monotonic() - start
 
     marks: list[dict] = []
@@ -102,8 +113,9 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         for p in pages:
             if kinds[p.number].kind == "section":
                 marks.extend(extract.level_marks(p))
-    for doc in (project["model1"], conclusion["model1"]):
-        warnings.extend(doc["warnings"])
+    warnings = list(conclusion["model1"]["warnings"]) + (list(project["model1"]["warnings"]) if project else [])
+    if not project_files:
+        warnings.append("Loyiha berilmagan: faqat xulosa o'qildi, solishtirishlar bajarilmaydi")
 
     progress("done")
     return {
@@ -118,24 +130,33 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
 
 # ---------- assessment (pure code) ----------
 
-# (label, project scalar, conclusion building field or "scalar:<name>", checked for equality?)
-COMPARISON_ROWS: tuple[tuple[str, str | None, str | None, bool], ...] = (
-    ("Qurilish hajmi (jami), m³", "volume_total", "volume", True),
-    ("Qurilish hajmi (yer usti), m³", "volume_above_ground", None, False),
-    ("Qurilish hajmi (yer osti), m³", "volume_below_ground", None, False),
-    ("Qurilish maydoni, m²", "footprint_area", "footprint_area", True),
-    ("Umumiy maydon, m²", "total_area", "total_area", True),
-    ("Qavatlar soni", "floors", "floors", True),
-    ("Xonadonlar soni", "apartments", "apartments", True),
-    ("Tarx o'lchami", "plan_size", "plan_size", False),
-    ("Manzil", "address", "scalar:address", False),
-    ("Bino nomi", None, "name", False),
-    ("Bino turi", None, "type", False),
-    ("Xulosa raqami", None, "scalar:conclusion_number", False),
-    ("Xulosa sanasi", None, "scalar:conclusion_date", False),
-    ("Buyurtmachi", None, "scalar:customer", False),
-    ("Qurilish turi", None, "scalar:construction_type", False),
+SCALAR_ROWS: tuple[tuple[str, str | None, str | None], ...] = (
+    ("Manzil", "address", "address"),
+    ("Xulosa raqami", None, "conclusion_number"),
+    ("Xulosa sanasi", None, "conclusion_date"),
+    ("Murojaat raqami", None, "application_number"),
+    ("Buyurtmachi", None, "customer"),
+    ("Qurilish turi", None, "construction_type"),
+    ("Loyiha shifri", "project_code", None),
 )
+# (field in the pair table, project field, conclusion field, how it is compared)
+PAIR_FIELDS: tuple[tuple[str, str | None, str | None, str], ...] = (
+    ("volume", "volume", "volume", "scaled"),
+    ("volume_above_ground", "volume_above_ground", None, ""),
+    ("volume_below_ground", "volume_below_ground", None, ""),
+    ("footprint_area", "footprint_area", "footprint_area", "scaled"),
+    ("total_area", "total_area", "total_area", "scaled"),
+    ("usable_area", None, "usable_area", ""),
+    ("count", "count", "count", ""),
+    ("floors", "floors", "floors", "equal"),
+    ("apartments", "apartments", "apartments", "scaled"),
+    ("plan_size", "plan_size", "plan_size", "plan"),
+    ("reference", None, "reference", ""),
+)
+EMPTY_PROJECT: dict = {"doc": "project", "scalars": {k: extract.empty_value(k, "model1")
+                                                       for k in (*extract.PROJECT_SCALARS, "address")},
+                       "site_areas": [], "buildings": [], "area_breakdown": [], "floor_heights": [], "rooms": [],
+                       "requests": [], "warnings": []}
 
 
 def _num(v: dict | None) -> Decimal | None:
@@ -144,139 +165,235 @@ def _num(v: dict | None) -> Decimal | None:
     return None
 
 
-def choose_building(project: dict, conclusion: dict, chosen: int | None) -> tuple[int | None, str]:
-    """Which row of the conclusion's buildings table this album describes."""
-    buildings = conclusion["buildings"]
-    if not buildings:
-        return None, "xulosadan binolar jadvali o'qilmadi"
-    if chosen is not None:
-        if not 0 <= chosen < len(buildings):
-            raise ValueError(f"Bino indeksi noto'g'ri: {chosen} (binolar soni {len(buildings)})")
-        return chosen, "xodim tanlagan"
-    if len(buildings) == 1:
-        return 0, "xulosada bitta bino"
-    for field_p, field_c, what in (("volume_total", "volume", "hajm"), ("footprint_area", "footprint_area",
-                                                                        "qurilish maydoni")):
-        target = _num(project["scalars"][field_p])
-        hits = [i for i, b in enumerate(buildings) if target is not None and _num(b[field_c]) == target]
-        if len(hits) == 1:
-            return hits[0], f"{what} loyihadagi bilan teng bo'lgan yagona bino (xodim tekshirsin)"
-    return None, "xulosada bir nechta bino bor, loyihaga mosini xodim tanlaydi"
+def _text(v: dict | None) -> str | None:
+    return str(v["value"]) if v and v.get("status") == verify.ACCEPTED and v.get("value") else None
 
 
-def _conclusion_value(conclusion: dict | None, building: dict | None, ref: str | None, model: str) -> dict | None:
-    if ref is None or conclusion is None:
+def _other_model_building(other: dict | None, building: dict | None) -> dict | None:
+    """The second model's record of the same building (matched by name)."""
+    if other is None or building is None:
         return None
-    if ref.startswith("scalar:"):
-        return conclusion["scalars"][ref.removeprefix("scalar:")]
-    return building[ref] if building else extract.empty_value(ref, model)
-
-
-def _same_building(conclusion2: dict | None, building1: dict | None) -> dict | None:
-    """The second model's row for the same building (matched by name, then by position)."""
-    if conclusion2 is None or building1 is None:
-        return None
-    name = verify.normalize(str(building1["name"].get("value"))).lower()
-    hits = [b for b in conclusion2["buildings"] if verify.normalize(str(b["name"].get("value"))).lower() == name]
+    key = extract.name_key(building["name"])
+    hits = [b for b in other["buildings"] if key and extract.name_key(b["name"]) == key]
     return hits[0] if len(hits) == 1 else None
 
 
-def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_floors: int | None = None,
-           chosen_building: int | None = None) -> dict:
-    overrides = overrides or {}
-    p1, c1 = result["project"]["model1"], result["conclusion"]["model1"]
-    p2, c2 = result["project"].get("model2"), result["conclusion"].get("model2")
-    index, index_note = choose_building(p1, c1, chosen_building)
-    b1 = c1["buildings"][index] if index is not None else None
-    b2 = _same_building(c2, b1)
-
-    rows: list[dict] = []
+def _site_checks(doc_label: str, code: str, site: list[dict], footprints: list[Decimal | None]) -> list[verify.Check]:
+    """Land-plot balance of one document: parts against the total, building footprints against "built-up"."""
     checks: list[verify.Check] = []
-    for label, pf, cf, compare in COMPARISON_ROWS:
-        pv1 = p1["scalars"][pf] if pf else None
-        pv2 = p2["scalars"][pf] if (pf and p2) else None
-        cv1 = _conclusion_value(c1, b1, cf, "model1")
-        cv2 = _conclusion_value(c2, b2, cf, "model2") if c2 else None
-        row = {"label": label, "project": pv1, "conclusion": cv1, "project_model2": pv2, "conclusion_model2": cv2,
-               "agreement_project": verify.model_agreement(pv1, pv2) if (pf and p2) else None,
-               "agreement_conclusion": verify.model_agreement(cv1, cv2) if (cf and c2) else None,
-               "check": None}
-        if compare:
-            check = verify.check_equal(f"equal_{pf}", f"{label}: loyiha = xulosa", _num(pv1), _num(cv1))
-            row["check"] = check.dict()
-            checks.append(check)
-        rows.append(row)
+    accepted = [x for x in site if x["status"] == verify.ACCEPTED and x["number"] is not None]
+    totals = [Decimal(x["number"]) for x in accepted if x["kind"] == "total"]
+    parts = [x for x in accepted if x["kind"] != "total"]
+    if len(totals) == 1 and parts:
+        s = sum((Decimal(x["number"]) for x in parts), Decimal(0))
+        expr = " + ".join(fmt_num(Decimal(x["number"])) for x in parts) + f" = {fmt_num(s)}; hudud maydoni {fmt_num(totals[0])}"
+        status = verify.OK if s == totals[0] else verify.WARNING
+        checks.append(verify.Check(f"site_balance_{code}", f"Hudud balansi ({doc_label})", status,
+                                   expr + ("" if status == verify.OK else f" — balans yopilmaydi (farq {fmt_num(totals[0] - s)})")))
+    built = [Decimal(x["number"]) for x in accepted if x["kind"] == "built_up"]
+    known = [f for f in footprints if f is not None]
+    if len(built) == 1 and known and len(known) == len(footprints):
+        s = sum(known, Decimal(0))
+        status = verify.OK if s == built[0] else verify.WARNING
+        checks.append(verify.Check(f"site_footprints_{code}", f"Binolar qurilish maydonlari yig'indisi = hududdagi qurilish osti maydoni ({doc_label})",
+                                   status, f"binolar yig'indisi {fmt_num(s)}; hudud ko'rsatkichi {fmt_num(built[0])}"
+                                   + ("" if status == verify.OK else f"; farq {fmt_num(s - built[0])}")))
+    return checks
 
-    address_p = p1["scalars"]["address"]
-    address_c = c1["scalars"]["address"]
-    address_check = verify.check_address(
-        address_p["value"] if address_p["status"] == verify.ACCEPTED else None,
-        address_c["value"] if address_c["status"] == verify.ACCEPTED else None)
+
+def _building_heights(building: dict) -> tuple[list[Decimal], str]:
+    """Heights for the lower-bound check of one conclusion building: basement (if stated) + every storey."""
+    heights = volumes.collect_heights([], building.get("floor_heights", []))
+    floors = _num(building["floors"])
+    if floors is None or not heights:
+        return [], "qavatlar soni yoki qavat balandliklari yo'q"
+    out: list[Decimal] = []
+    parts: list[str] = []
+    basement, _ = volumes.resolve_height(volumes.Level("basement"), heights)
+    if basement is not None:
+        out.append(basement)
+        parts.append(f"yerto'la {fmt_num(basement)}")
+    for f in range(1, int(floors) + 1):
+        h, _ = volumes.resolve_height(volumes.Level("floor", f), heights)
+        if h is None:
+            return [], f"{f}-qavat balandligi hujjatda aniqlanmadi"
+        out.append(h)
+    parts.append(f"{int(floors)} qavat")
+    return out, " + ".join(parts)
+
+
+def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_floors: int | None = None,
+           matches: dict[str, int] | None = None) -> dict:
+    """Combine the extraction result with staff decisions. Pure code, no model."""
+    overrides = overrides or {}
+    has_project = bool(result["project"])
+    p1 = result["project"]["model1"] if has_project else EMPTY_PROJECT
+    c1 = result["conclusion"]["model1"]
+    p2 = result["project"].get("model2") if has_project else None
+    c2 = result["conclusion"].get("model2")
+    two_models = c2 is not None
+    checks: list[verify.Check] = []
+    disagreements: list[str] = []
+
+    def agreement(a: dict | None, b: dict | None, where: str) -> str | None:
+        if not two_models or a is None:
+            return None
+        verdict = verify.model_agreement(a, b)
+        if verdict == "mismatch":
+            disagreements.append(where)
+        return verdict
+
+    # ----- object-level fields -----
+    scalar_rows: list[dict] = []
+    for label, pf, cf in SCALAR_ROWS:
+        pv, cv = (p1["scalars"][pf] if pf and has_project else None), (c1["scalars"][cf] if cf else None)
+        scalar_rows.append({
+            "label": label, "project": pv, "conclusion": cv,
+            "project_model2": p2["scalars"][pf] if (pf and p2) else None,
+            "conclusion_model2": c2["scalars"][cf] if (cf and c2) else None,
+            "agreement_project": agreement(pv, p2["scalars"][pf] if (pf and p2) else None, f"{label} (loyiha)") if pf and p2 else None,
+            "agreement_conclusion": agreement(cv, c2["scalars"][cf] if (cf and c2) else None, f"{label} (xulosa)") if cf else None,
+            "check": None})
+    pa = p1["scalars"]["address"]
+    variants = [str(v["value"]) for v in pa.get("variants", [])] or ([str(pa["value"])] if _text(pa) else [])
+    address_check = verify.check_address(variants, _text(c1["scalars"]["address"]))
+    if not has_project:
+        address_check = verify.Check("address", address_check.name, verify.NOT_RUN, "loyiha berilmagan")
     checks.append(address_check)
-    for row in rows:
-        if row["label"] == "Manzil":
-            row["check"] = address_check.dict()
+    scalar_rows[0]["check"] = address_check.dict()
 
-    s = p1["scalars"]
-    checks.append(verify.check_sum("sum_volume", "Yer usti + yer osti = jami hajm (loyiha)",
-                                   [_num(s["volume_above_ground"]), _num(s["volume_below_ground"])],
-                                   _num(s["volume_total"])))
-    checks.append(verify.check_sum("sum_area", "Sathlar maydoni yig'indisi = umumiy maydon (loyiha)",
-                                   [_num(x) for x in p1["area_breakdown"]], _num(s["total_area"])))
-    if len(c1["buildings"]) > 1 or any(v["status"] != verify.NOT_FOUND for v in c1["totals"].values()):
+    # ----- buildings: pairs of (project building, conclusion building) -----
+    pairs = volumes.match_buildings(p1["buildings"], c1["buildings"], matches)
+    building_rows: list[dict] = []
+    for n, pair in enumerate(pairs):
+        pb = p1["buildings"][pair["p"]] if pair["p"] is not None else None
+        cb = c1["buildings"][pair["c"]] if pair["c"] is not None else None
+        pb2, cb2 = _other_model_building(p2, pb), _other_model_building(c2, cb)
+        title = " / ".join(str(b["name"]["value"]) for b in (cb, pb) if b and b["name"].get("value")) or "(nomsiz)"
+        if cb and cb.get("type", {}).get("value"):
+            title = f"{cb['type']['value']}: {title}"
+        count = (_num(cb["count"]) if cb else None) or (_num(pb["count"]) if pb else None)
+        fields: list[dict] = []
+        for field, pf, cf, how in PAIR_FIELDS:
+            pv = pb[pf] if (pb and pf) else None
+            cv = cb[cf] if (cb and cf) else None
+            if (pv is None or pv["status"] == verify.NOT_FOUND) and (cv is None or cv["status"] == verify.NOT_FOUND):
+                continue
+            label = extract.FIELD_LABELS[field]
+            check: verify.Check | None = None
+            if pb and cb and how:
+                code = f"b{n}_{field}"
+                name = f"{title}: {label} — loyiha = xulosa"
+                if how == "scaled":
+                    check = verify.check_equal_scaled(code, name, _num(pv), _num(cv), count)
+                elif how == "equal":
+                    check = verify.check_equal(code, name, _num(pv), _num(cv))
+                else:
+                    dp, dc = verify.plan_dimensions(_text(pv)), verify.plan_dimensions(_text(cv))
+                    if not dp or not dc:
+                        check = verify.Check(code, name, verify.NOT_RUN, "tarx o'lchami hujjatlardan birida yo'q")
+                    else:
+                        same = sorted(dp) == sorted(dc)
+                        check = verify.Check(code, name, verify.OK if same else verify.MISMATCH,
+                                             f"loyiha «{_text(pv)}», xulosa «{_text(cv)}»")
+                checks.append(check)
+            where = f"{title}: {label}"
+            fields.append({
+                "field": field, "label": label, "project": pv, "conclusion": cv,
+                "project_model2": pb2[pf] if (pb2 and pf) else None,
+                "conclusion_model2": cb2[cf] if (cb2 and cf) else None,
+                "agreement_project": agreement(pv, pb2[pf] if (pb2 and pf) else None, where + " (loyiha)") if (p2 and pv) else None,
+                "agreement_conclusion": agreement(cv, cb2[cf] if (cb2 and cf) else None, where + " (xulosa)") if cv else None,
+                "check": check.dict() if check else None})
+        building_rows.append({"title": title, "pair": pair, "fields": fields, "count": None if count is None else str(count),
+                              "heights": (cb or {}).get("floor_heights", [])})
+        if pb:
+            s = pb
+            if any(s[k]["status"] != verify.NOT_FOUND for k in ("volume_above_ground", "volume_below_ground")):
+                checks.append(verify.check_sum(f"b{n}_sum_volume", f"{title}: yer usti + yer osti = jami hajm (loyiha)",
+                                               [_num(s["volume_above_ground"]), _num(s["volume_below_ground"])],
+                                               _num(s["volume"])))
+        if cb:
+            hs, how_h = _building_heights(cb)
+            bound = verify.check_volume_lower_bound(_num(cb["volume"]), _num(cb["footprint_area"]), hs)
+            checks.append(verify.Check(f"b{n}_volume_lower_bound", f"{title}: {bound.name} (xulosa)", bound.status,
+                                       bound.detail + (f" [{how_h}]" if how_h else "")))
+            if cb["plan_size"]["status"] != verify.NOT_FOUND:
+                checks.append(verify.check_plan_vs_footprint(f"b{n}_plan", f"{title}: tarx o'lchami va qurilish maydoni (xulosa)",
+                                                             _text(cb["plan_size"]), _num(cb["footprint_area"])))
+
+    # ----- sums and balances -----
+    if len(p1["buildings"]) == 1 and p1["area_breakdown"]:
+        checks.append(verify.check_sum("sum_area", "Sathlar maydoni yig'indisi = umumiy maydon (loyiha)",
+                                       [_num(x) for x in p1["area_breakdown"]], _num(p1["buildings"][0]["total_area"])))
+    if any(v["status"] != verify.NOT_FOUND for v in c1["totals"].values()):
         for f in extract.TOTAL_FIELDS:
+            # a row that stands for several identical buildings ("Tip-1 (2 ta)") counts that many times
+            parts = [None if _num(b[f]) is None else _num(b[f]) * (_num(b["count"]) or 1) for b in c1["buildings"]]
             checks.append(verify.check_sum(f"conclusion_total_{f}", f"Xulosa «Jami» qatori: {extract.FIELD_LABELS[f]}",
-                                           [_num(b[f]) for b in c1["buildings"]], _num(c1["totals"][f])))
+                                           parts, _num(c1["totals"][f])))
+    checks.extend(_site_checks("xulosa", "conclusion", c1["site_areas"],
+                               [(_num(b["footprint_area"]) * (_num(b["count"]) or 1)) if _num(b["footprint_area"]) is not None
+                                else None for b in c1["buildings"] if b["reference"]["status"] == verify.NOT_FOUND]))
+    if has_project:
+        checks.extend(_site_checks("loyiha", "project", p1["site_areas"],
+                                   [_num(b["footprint_area"]) for b in p1["buildings"]]))
+        for kind in ("total", "built_up", "paving", "greenery"):
+            a = [Decimal(x["number"]) for x in p1["site_areas"] if x["kind"] == kind and x["status"] == verify.ACCEPTED]
+            b = [Decimal(x["number"]) for x in c1["site_areas"] if x["kind"] == kind and x["status"] == verify.ACCEPTED]
+            if len(set(a)) == 1 and len(set(b)) == 1:
+                checks.append(verify.check_equal(f"site_{kind}", f"Hudud: {extract.SITE_KIND_LABELS[kind]} — loyiha = xulosa",
+                                                 a[0], b[0]))
 
-    heights = volumes.collect_heights(p1["floor_heights"], b1["floor_heights"] if b1 else [])
+    # ----- volumes -----
+    rows = volumes.hb_rows(p1["buildings"], c1["buildings"], pairs, overrides)
+    for r in rows:
+        if r["check"]["status"] == verify.MISMATCH:
+            checks.append(verify.Check(r["check"]["code"], r["check"]["name"], verify.MISMATCH, r["check"]["detail"]))
+    paired = [pair for pair in pairs if pair["p"] is not None and pair["c"] is not None]
+    album_building = c1["buildings"][paired[0]["c"]] if (len(p1["buildings"]) == 1 and paired) else None
+    heights = volumes.collect_heights(p1["floor_heights"], album_building["floor_heights"] if album_building else [])
     components = volumes.build_components(p1, heights, result.get("category_suggestions", {}), overrides)
-    floors = _num(s["floors"]) or (_num(b1["floors"]) if b1 else None)
-
-    per_floor: list[Decimal] = []
-    complete = floors is not None
-    if floors is not None:
-        for f in range(1, int(floors) + 1):
-            h, _ = volumes.resolve_height(volumes.Level("floor", f), heights)
-            if h is None:
-                complete = False
-                break
-            per_floor.append(h)
-        basement, _ = volumes.resolve_height(volumes.Level("basement"), heights)
-        if basement is not None and any(c["level_kind"] == "basement" for c in components):
-            per_floor.append(basement)
-    checks.append(verify.check_volume_lower_bound(_num(s["volume_total"]), _num(s["footprint_area"]),
-                                                  per_floor if complete else []))
-
-    vols = {
-        "Hb": volumes.hb_volume(p1, b1),
-        "Hyu": volumes.hyu_volume(permitted_floors, floors, components, _num(s["volume_above_ground"])),
-        "Ha": volumes.category_volume("Ha", components),
-        "Ht": volumes.category_volume("Ht", components),
-        "Hu": volumes.category_volume("Hu", components),
-    }
+    all_floors = [f for f in (_num(b["floors"]) for b in c1["buildings"] + p1["buildings"]) if f is not None]
+    if len(p1["buildings"]) == 1:
+        floors = _num(p1["buildings"][0]["floors"]) or (_num(album_building["floors"]) if album_building else None)
+        above = _num(p1["buildings"][0]["volume_above_ground"])
+        hyu = volumes.hyu_volume(permitted_floors, floors, components, above)
+    elif len(c1["buildings"]) == 1 and not p1["buildings"]:
+        floors = _num(c1["buildings"][0]["floors"])
+        hyu = volumes.hyu_volume(permitted_floors, floors, components, None)
+    else:
+        floors = max(all_floors) if all_floors else None
+        if permitted_floors is not None and floors is not None and permitted_floors >= floors:
+            hyu = {"code": "Hyu", "component_ids": [], "proposal": "0", "complete": True,
+                   "formula": f"ruxsat etilgan {permitted_floors} ≥ eng baland bino qavatlari {fmt_num(floors)} → 0", "notes": []}
+        else:
+            hyu = {"code": "Hyu", "component_ids": [], "proposal": None, "complete": False, "formula": "",
+                   "notes": ["bir nechta bino: ruxsat etilgan qavatlar sonini kiriting; undan baland binolar bo'lsa "
+                             "Hyu ni xodim bino bo'yicha hisoblab kiritadi" if permitted_floors is None else
+                             "bir nechta bino va ruxsat etilganidan baland bino bor — Hyu ni xodim kiritadi"]}
+    vols = {"Hb": volumes.hb_volume(rows), "Hyu": hyu,
+            "Ha": volumes.category_volume("Ha", components), "Ht": volumes.category_volume("Ht", components),
+            "Hu": volumes.category_volume("Hu", components)}
 
     def proposal(code: str) -> Decimal | None:
         return None if vols[code]["proposal"] is None else Decimal(vols[code]["proposal"])
 
     checks.append(verify.check_deductions_bound(proposal("Ha"), proposal("Ht"), proposal("Hu"), proposal("Hb")))
-
-    disagreements: list[str] = []
-    if p2 or c2:
-        for row in rows:
-            for side, key in (("loyiha", "agreement_project"), ("xulosa", "agreement_conclusion")):
-                if row[key] == "mismatch":
-                    disagreements.append(f"{row['label']} ({side})")
-        status = verify.MISMATCH if disagreements else verify.OK
-        checks.append(verify.Check("model_agreement", "Ikki model javoblari tengligi", status,
-                                   "mos emas: " + ", ".join(disagreements) if disagreements
-                                   else "solishtirilgan maydonlarda ikki model javobi mos"))
-
+    if two_models:
+        checks.append(verify.Check(
+            "model_agreement", "Ikki model javoblari tengligi", verify.MISMATCH if disagreements else verify.OK,
+            "mos emas: " + "; ".join(disagreements) if disagreements else "solishtirilgan maydonlarda ikki model javobi mos"))
+    industrial, industrial_total = volumes.industrial_indicator(rows)
     return {
-        "building_index": index, "building_note": index_note, "building": b1,
-        "building_count": len(c1["buildings"]),
-        "rows": rows, "checks": [c.dict() for c in checks], "components": components, "volumes": vols,
-        "heights": [{"level": h.label, "kind": h.level.kind, "value": str(h.value), "origin": h.origin}
-                    for h in heights],
+        "has_project": has_project, "scalar_rows": scalar_rows, "buildings": building_rows, "pairs": pairs,
+        "site": {"project": p1["site_areas"], "conclusion": c1["site_areas"],
+                 "project_model2": p2["site_areas"] if p2 else None, "conclusion_model2": c2["site_areas"] if c2 else None},
+        "totals": c1["totals"], "checks": [c.dict() for c in checks],
+        "hb_rows": rows, "components": components, "volumes": vols,
+        "heights": [{"level": h.label, "kind": h.level.kind, "value": str(h.value), "origin": h.origin} for h in heights],
         "floors": None if floors is None else str(floors),
-        "industrial_floors": [(n, str(a), str(h)) for n, a, h in volumes.industrial_floors(components)],
+        "industrial": {"rows": industrial, "total": str(industrial_total)},
+        "project_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in p1["buildings"]],
+        "conclusion_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in c1["buildings"]],
     }

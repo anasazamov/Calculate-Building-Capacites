@@ -351,6 +351,7 @@ def hb_rows(project: list[dict], conclusion: list[dict], pairs: list[dict], over
         included = bool(ov["included"]) if ov.get("included") is not None else True
         rows.append({
             "id": cid, "name": name, "pair": pair, "count": str(count), "count_note": count_note,
+            "project_name": str((p or {}).get("name", {}).get("value") or ""),
             "project": pv, "conclusion": cv, "reference": reference or None, "check": check.dict(),
             "volume": None if proposal is None else str(proposal), "computed": computed, "formula": formula,
             "included": included, "override": ov or None,
