@@ -2,13 +2,13 @@
  "primary": "model1",
  "second": "model2",
  "classes": {
-  "correct_confirmed": 198,
-  "caught": 1,
+  "correct_confirmed": 197,
+  "caught": 6,
   "out_of_scope": 10,
-  "not_found": 3,
+  "not_found": 1,
   "partial": 1,
-  "correct_but_flagged": 6,
-  "silent_error_flagged": 2
+  "correct_but_flagged": 5,
+  "flagged": 1
  },
  "silent_errors_unflagged": []
 }

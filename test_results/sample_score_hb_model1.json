@@ -1,0 +1,44 @@
+{
+ "model": "model1",
+ "project": {
+  "not_scored": 12,
+  "correct": 5,
+  "caught": 1
+ },
+ "conclusion": {
+  "correct": 15,
+  "not_scored": 3
+ },
+ "by_sample": {
+  "284459": {
+   "hb_proposal": "124433.19",
+   "hb_complete": true,
+   "hb_rows": 3,
+   "hb_in_contract": null
+  },
+  "291405": {
+   "hb_proposal": null,
+   "hb_complete": false,
+   "hb_rows": 2,
+   "hb_in_contract": null
+  },
+  "298814": {
+   "hb_proposal": "2226.0",
+   "hb_complete": true,
+   "hb_rows": 1,
+   "hb_in_contract": "2226"
+  },
+  "302030": {
+   "hb_proposal": null,
+   "hb_complete": false,
+   "hb_rows": 5,
+   "hb_in_contract": "20214.02"
+  },
+  "302704": {
+   "hb_proposal": null,
+   "hb_complete": false,
+   "hb_rows": 7,
+   "hb_in_contract": "2265.0"
+  }
+ }
+}

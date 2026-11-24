@@ -2,33 +2,33 @@
  "model": "model1",
  "rows": 221,
  "classes": {
-  "correct": 204,
-  "caught": 1,
+  "correct": 202,
+  "caught": 6,
   "out_of_scope": 10,
-  "not_found": 3,
+  "not_found": 1,
   "partial": 1,
-  "silent_error": 2
+  "flagged": 1
  },
  "by_sample": {
   "284459": {
-   "correct": 71,
-   "out_of_scope": 6,
-   "not_found": 2
+   "correct": 73,
+   "out_of_scope": 6
   },
   "291405": {
-   "correct": 18,
-   "silent_error": 1
+   "correct": 17,
+   "caught": 1,
+   "flagged": 1
   },
   "298814": {
    "correct": 16,
    "caught": 1
   },
   "302030": {
-   "correct": 47,
+   "correct": 44,
    "not_found": 1,
    "partial": 1,
    "out_of_scope": 2,
-   "silent_error": 1
+   "caught": 4
   },
   "302704": {
    "correct": 52,
@@ -94,16 +94,18 @@
    "correct": 2
   },
   "loyiha:qurilish_hajmi": {
-   "correct": 6
+   "caught": 1,
+   "correct": 5
   },
   "loyiha:qurilish_maydoni": {
-   "correct": 6
+   "caught": 1,
+   "correct": 5
   },
   "loyiha:sath_belgisi_16_qavat": {
-   "not_found": 1
+   "correct": 1
   },
   "loyiha:sath_belgisi_2_qavat": {
-   "not_found": 1
+   "correct": 1
   },
   "loyiha:sath_belgisi_texnik": {
    "correct": 1
@@ -112,13 +114,14 @@
    "correct": 1
   },
   "loyiha:soni": {
-   "silent_error": 1
+   "caught": 1
   },
   "loyiha:tarx_olchami": {
    "correct": 1
   },
   "loyiha:umumiy_maydon": {
-   "correct": 6
+   "caught": 1,
+   "correct": 5
   },
   "loyiha:xona_maydoni_lift_xolli": {
    "correct": 1
@@ -239,8 +242,9 @@
    "correct": 1
   },
   "xulosa:manzil": {
-   "correct": 4,
-   "partial": 1
+   "correct": 3,
+   "partial": 1,
+   "caught": 1
   },
   "xulosa:murojaat_raqami": {
    "correct": 5
@@ -248,7 +252,7 @@
   "xulosa:qavatlar_soni": {
    "caught": 1,
    "correct": 7,
-   "silent_error": 1
+   "flagged": 1
   },
   "xulosa:qurilish_hajmi": {
    "correct": 15
@@ -284,46 +288,33 @@
    "correct": 5
   }
  },
- "silent_errors": [
-  {
-   "id": "302030",
-   "doc": "loyiha",
-   "page": "2",
-   "field": "soni"
-  },
-  {
-   "id": "291405",
-   "doc": "xulosa",
-   "page": "2",
-   "field": "qavatlar_soni"
-  }
- ],
+ "silent_errors": [],
  "failed_samples": {},
  "timing": {
   "284459": {
-   "conclusion_s": 286.2,
-   "project_s": 585.3,
-   "total_s": 871.5
+   "conclusion_s": 0.4,
+   "project_s": 734.7,
+   "total_s": 735.1
   },
   "291405": {
-   "conclusion_s": 257.8,
-   "project_s": 49.6,
-   "total_s": 307.4
+   "conclusion_s": 0.8,
+   "project_s": 157.3,
+   "total_s": 158.1
   },
   "298814": {
-   "conclusion_s": 164.9,
-   "project_s": 0.0,
-   "total_s": 164.9
+   "conclusion_s": 3.7,
+   "project_s": 0.1,
+   "total_s": 3.8
   },
   "302030": {
-   "conclusion_s": 199.5,
-   "project_s": 757.4,
-   "total_s": 956.8
+   "conclusion_s": 20.5,
+   "project_s": 506.2,
+   "total_s": 526.7
   },
   "302704": {
-   "conclusion_s": 475.0,
+   "conclusion_s": 30.1,
    "project_s": 0.2,
-   "total_s": 475.2
+   "total_s": 30.3
   }
  }
 }
