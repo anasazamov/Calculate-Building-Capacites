@@ -78,12 +78,14 @@ If a download stalls on its last file, stop it and run the same command again: i
 ## Running
 
 ```bash
-# model servers, each supervised by a watchdog (canary every 60 s, restart on failure)
+# model servers, each supervised by a watchdog (canary every 60 s, restart on failure).
+# Each command returns when its server is healthy (1.5-4 minutes). Start them one after another,
+# model 1 first: two servers loading at the same moment on a shared card ignore their memory shares.
 scripts/start_watchdog.sh model1        # Qwen3.8-27B-FP8      on 127.0.0.1:8001
 scripts/start_watchdog.sh model2        # Gemma-4-31B-it (FP8) on 127.0.0.1:8002, optional
-tail -f logs/incidents.jsonl            # wait for "server_ready"
+tail logs/incidents.jsonl               # start, restart and failure events
 
-# web interface on 127.0.0.1:8000
+# web interface on 127.0.0.1:8000 (foreground; add `nohup ... &` to keep it running)
 .venv/bin/python -m feecalc.web
 ```
 
@@ -118,6 +120,7 @@ fractions to 0.90.
 .venv/bin/python scripts/smoke_test.py model1         # canary, 50 sequential + 16 parallel requests
 .venv/bin/python scripts/read_samples.py model1       # read every pair in ~/samples
 .venv/bin/python scripts/score_samples.py model1      # score against the etalon files
+.venv/bin/python scripts/load_test.py model1          # realistic requests at 1, 8 and 16 in parallel
 .venv/bin/python -m tests.record_replay               # re-record replay data after prompt changes
 ```
 
@@ -130,3 +133,13 @@ Thinking off (`chat_template_kwargs: {"enable_thinking": false}`), response cons
 JSON schema with bounded string lengths, fixed `max_tokens`, `temperature 0.2`, `top_p 0.8`,
 `top_k 20`, `presence_penalty 0`. The prompt always states the response shape explicitly:
 without it, schema-constrained output from Qwen degrades (see `HISOBOT.md`).
+
+## Notes for maintainers
+
+- PyMuPDF is not thread-safe: every use goes through `ingest.MUPDF_LOCK`.
+- PyMuPDF 2.1 runs a bundled layout model (ONNX) inside `find_tables()`; `feecalc/ingest.py`
+  switches it off (`pymupdf._layout_enabled = False`). Re-check this after upgrading PyMuPDF.
+- After changing prompts, schemas or the test fixtures, re-record the replay data
+  (`python -m tests.record_replay`, model 1 must be running).
+- `no try/except` is a project rule: errors must surface with their full trace. The only catch
+  is the job boundary in `feecalc/web/app.py` (and the per-sample boundary of the test scripts).

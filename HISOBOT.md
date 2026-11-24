@@ -345,6 +345,13 @@ olinadi, katak matni so'z koordinatalaridan qayta yig'iladi.
 topiladi. Ma'lumot baribir serverdan chiqmagan (model mahalliy), lekin zanjirda nazoratsiz ikkinchi
 model bo'lmasligi kerak.
 
+### 4.6a. Ikki model bir vaqtda ishga tushirilsa xotira ulushi buziladi
+
+Ikkala vLLM serveri bir paytda yuklanganda Gemma 0,55 ulush (≈54 GB) o'rniga 81 GB egalladi va
+Qwen ishga tushmadi (nazoratchi uni qayta-qayta ishga tushirishga urindi). Ketma-ket ishga
+tushirilganda muammo yo'q: Qwen 37,8 GB, Gemma 51,6 GB. **Chora:** `scripts/start_watchdog.sh`
+server tayyor bo'lguncha kutadi; modellar birin-ketin ishga tushiriladi (avval 1-model).
+
 ### 4.7. Hujjatning o'zidagi ziddiyat (291405)
 
 Xulosaning 2-sahifasida "yerto'la, 4 qavat hamda mansarda", 5-sahifasida "Yerto'lali 5-qavat bino".
