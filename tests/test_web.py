@@ -193,3 +193,10 @@ def test_password_gate(tmp_path: Path) -> None:
     assert c.get("/", auth=("x", "wrong")).status_code == 401
     assert c.get("/", headers={"Authorization": "Basic !!!"}).status_code == 401
     assert c.get("/", auth=("anyone", "correct horse battery")).status_code in (200, 303)
+
+
+def test_password_per_port(tmp_path: Path) -> None:
+    app = create_app(tmp_path, start_worker=False, password="correct horse battery", port_passwords={80: "local"})
+    c = TestClient(app, follow_redirects=False)  # the test client arrives on port 80
+    assert c.get("/", auth=("x", "correct horse battery")).status_code == 401
+    assert c.get("/", auth=("x", "local")).status_code in (200, 303)

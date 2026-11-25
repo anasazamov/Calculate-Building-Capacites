@@ -53,12 +53,15 @@ def password_ok(header: str, password: str) -> bool:
     return secrets.compare_digest(given, password.encode("utf-8"))
 
 
-def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: str = "") -> FastAPI:
+def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: str = "",
+               port_passwords: dict[int, str] | None = None) -> FastAPI:
+    """`password` guards every listener; `port_passwords` overrides it for requests that arrived on a given port."""
     app = FastAPI(title="Infratuzilma yig'imi", docs_url=None, redoc_url=None, openapi_url=None)
     if password:
         @app.middleware("http")
         async def require_password(request: Request, call_next):  # type: ignore[no-untyped-def]
-            if password_ok(request.headers.get("authorization", ""), password):
+            expected = (port_passwords or {}).get(request.scope["server"][1], password)
+            if password_ok(request.headers.get("authorization", ""), expected):
                 return await call_next(request)
             return Response("Parol kerak", status_code=401, headers={"WWW-Authenticate": 'Basic realm="feecalc"'})
     store = Store(data_dir / "feecalc.db")

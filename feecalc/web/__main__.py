@@ -4,7 +4,7 @@ Default: plain HTTP on 127.0.0.1:8000, no password; reach it through an SSH tunn
 To listen on another address as well, set FEECALC_HOST / FEECALC_PORT. A non-loopback address requires
 FEECALC_PASSWORD (HTTP Basic, any user name) and a TLS pair in FEECALC_TLS_CERT / FEECALC_TLS_KEY;
 the plain-HTTP loopback listener on 127.0.0.1:FEECALC_LOCAL_PORT (default 8000) stays available
-for SSH tunnels and asks for the same password.
+for SSH tunnels and asks for FEECALC_LOCAL_PASSWORD (default: the same password).
 """
 import asyncio
 import os
@@ -31,7 +31,8 @@ if __name__ == "__main__":
     password = os.environ.get("FEECALC_PASSWORD", "")
     cert = os.environ.get("FEECALC_TLS_CERT")
     key = os.environ.get("FEECALC_TLS_KEY")
-    app = create_app(password=password)
+    local_password = os.environ.get("FEECALC_LOCAL_PASSWORD", password)
+    app = create_app(password=password, port_passwords={local_port: local_password} if host not in LOOPBACK else None)
     if host in LOOPBACK:
         uvicorn.run(app, host=host, port=port, log_level="info")
     else:
