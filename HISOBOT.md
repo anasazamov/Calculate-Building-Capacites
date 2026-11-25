@@ -211,6 +211,32 @@ xulosada yozilgan to'liq hajmlarni ko'rsatadi, shartnomada boshqa hajm qo'llanga
 uchun 3 m ko'rsatkichi tizimda alohida chiqadi (1-etap: qurilish maydonlari × 3 m = 52 043,7 m³ —
 README'dagi nazorat soniga teng); qaysi hajm olinishini xodim hal qiladi.
 
+#### Imzolangan shartnomalar bilan solishtirish (25.11.2026)
+
+`shartnoma.csv` dagi uch shartnomaning qiymatlari (Hb, koeffitsiyent, BHM 440 000) `feecalc/fee.py`
+orqali qayta hisoblandi va shartnomadagi summa bilan solishtirildi. Modellar qayta ishga
+tushirilmadi: tizim Hb si yakuniy o'lchovning saqlangan o'qishlaridan olindi (ikkala modelda bir xil).
+Ha, Ht, Hu, Hyu bu uch shartnomada nol yoki bo'sh, shuning uchun ular bu yerda sinalmadi.
+
+| Obyekt | Shartnomadagi Hb | Tizim o'qigan Hb | Koeffitsiyentlar (Kt × Ko × Kz × Kj) | Kod hisobi, so'm | Shartnomadagi summa, so'm | Natija |
+|---|---|---|---|---|---|---|
+| 298814 | 2 226 | 2 226,0 (xulosadan) | 0,85 × 1 × 0,05 × 1 = 0,0425 | 41 626 200 | 41 626 200 | mos |
+| 302030 | 20 214,02 | taklif yo'q, qatorlar ko'rsatildi | 0,85 × 1 × 0,05 × 0,6 = 0,0255 | 226 801 304 | 226 801 304,4 | mos (kod butun so'mga yaxlitlaydi) |
+| 302704 | 2 265,0 | taklif yo'q; 1–5-bloklar 146 442,1 | 1 × 0,5 × 0,05 × 0,6 = 0,015 | 14 949 000 | 24 915 000 | mos emas |
+
+- 298814: tizim Hb ni xulosadan o'zi topdi, shartnomadagi son bilan bir xil.
+- 302030: shartnomada loyiha ro'yxatining 1, 2 va 4-qatorlari olingan (19 822,65 + 251,37 + 140,0).
+  Tizim yig'indini o'zi taklif qilmadi, chunki hojatxona hajmi loyihada 251,37, xulosada 10,2 —
+  tanlov xodimda.
+- 302704, koeffitsiyent: shartnomada 0,015 yozilgan, lekin 24 915 000 so'm faqat 0,025 bilan chiqadi
+  (Kj = 1 bo'lganda). 0,015 bilan summa 14 949 000 so'm; farq 9 966 000 so'm. Bu shartnoma
+  ma'lumotnomasidagi nomuvofiqlik, tizim o'qishidagi xato emas.
+- 302704, hajm: shartnomada Hb = (335,0 + 420,0) m² × 3 m, ya'ni faqat 1- va 2-bloklar. Xulosadagi
+  1–5-bloklar hajmi 146 442,1 m³, 3 m ko'rsatkichi bo'yicha 1-etap 52 043,7 m³. Tizim ikkalasini
+  ko'rsatadi, qaysi biri olinishini xodim hal qiladi.
+- 298814 va 302030 da shartnomada "rekonstruksiya" (Kt = 0,85) qo'llangan, xulosada "Yangi qurilish"
+  yozilgan. Tizim xulosadagi yozuvni ko'rsatadi; koeffitsiyentni xodim tanlaydi.
+
 ### 3.5. README 3-bo'limidagi holatlar: ko'rsatildi / ko'rsatilmadi
 
 1-model (Qwen) natijasi bo'yicha, kod tekshiruvlari chiqishi:
