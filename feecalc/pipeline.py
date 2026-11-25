@@ -6,6 +6,7 @@ floors, chosen building) into components, volume proposals and checks.
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -148,8 +149,38 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         "prompt_version": extract.PROMPT_VERSION,
         "project": project, "conclusion": conclusion,
         "category_suggestions": suggestions, "level_marks": marks, "warnings": warnings,
+        "object": object_description(conclusion_pages),
         "timing": {k: round(v, 2) for k, v in timing.items()},
     }
+
+
+# ---------- the object as the conclusion describes it (pure code) ----------
+_OBJECT_LABEL = re.compile(r"^\s*(?:Obyekt(?:ning)?\s+nomi|Объект(?:нинг)?\s+номи|Наименование\s+объекта)\s*[:\-–]\s*", re.I)
+_NEXT_FIELD = re.compile(r"^\s*(?:\d+(?:\.\d+)+[.)]?\s|[^:]{2,45}:\s)")
+
+
+def object_description(pages: list[ingest.Page]) -> dict | None:
+    """The "Obyekt nomi" paragraph of a conclusion, verbatim: what is built and where.
+
+    Read by code from the page text, so it needs no verification against a model. It carries the
+    full address and the kind of object, which the recommendation (decide.py) relies on.
+    """
+    for page in pages[:2]:
+        lines = extract.page_line_text(page).splitlines()
+        for i, line in enumerate(lines):
+            m = _OBJECT_LABEL.match(line)
+            if not m:
+                continue
+            text = line[m.end():].strip()
+            for following in lines[i + 1:i + 8]:
+                if _NEXT_FIELD.match(following):
+                    break
+                # a word broken at the line end ("36-" / "manzilda") is joined without a space
+                text += ("" if text.endswith("-") else " ") + following.strip()
+            return {"field": "object", "value": text.strip(), "number": None, "unit": None, "file": page.file,
+                    "page": page.number, "source_text": line.strip(), "status": verify.ACCEPTED, "reason": None,
+                    "flags": []}
+    return None
 
 
 # ---------- assessment (pure code) ----------

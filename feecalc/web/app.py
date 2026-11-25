@@ -27,7 +27,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import classify, extract, fee, ingest, llm, pipeline, verify, volumes
+from .. import classify, contract, decide, extract, fee, ingest, llm, pipeline, verify, volumes
 from .store import Store, now
 
 HERE = Path(__file__).parent
@@ -55,6 +55,11 @@ AUDIT_LABELS = {
     "finalized": "ish yakunlandi",
 }
 ERROR_TITLES = {404: "Sahifa topilmadi", 409: "Bu amalni hozir bajarib bo'lmaydi"}
+GROUPS = ("kt", "ko", "kz", "kj")
+# What the calculation page used to save by itself before recommendations existed: not a staff choice.
+OLD_DEFAULT_CALC = {"kt": "new", "ko": "other", "kz": "500k-1m", "kz_value": "", "kj": "central", "k_council": "1",
+                    "bhm": "440000"}
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 def explain_error(error: str) -> str:
@@ -148,7 +153,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         VOLUME_LABELS=volumes.VOLUME_LABELS, VOLUME_CODES=volumes.VOLUME_CODES, STAGES=pipeline.STAGES,
         JOB_STATUS={"queued": "navbatda", "running": "o'qilmoqda", "ready": "tekshirish kutilmoqda",
                     "failed": "xato bilan to'xtadi", "finalized": "yakunlangan"},
-        AUDIT_LABELS=AUDIT_LABELS,
+        AUDIT_LABELS=AUDIT_LABELS, GROUP_TITLES=contract.COEFFICIENT_NAMES,
         AGREEMENT={"match": "mos", "mismatch": "MOS EMAS", "only_1": "faqat 1-model", "only_2": "faqat 2-model",
                    "neither": "ikkalasida yo'q"},
         FEE_GROUPS=fee.GROUPS, BHM_DEFAULT=fee.BHM_DEFAULT,
@@ -223,14 +228,55 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             raise HTTPException(400, "Sababini yozish majburiy")
         return text.strip()
 
+    # ---------- reference data and the system's recommendation ----------
+    descriptions: dict[int, dict | None] = {}  # for jobs read before the object description was stored
+
+    def load_reference() -> decide.Reference:
+        rows = store.reference_rows()
+        settings = {r["key"]: r for r in rows if r["kind"] == "setting"}
+        streets: dict[str, list[tuple[str, str]]] = {}
+        for r in rows:
+            if r["kind"] == "central_street":
+                settlement, _, street = r["key"].partition("|")
+                streets.setdefault(settlement, []).append((street, r["basis"]))
+        base = decide.Reference()
+        return decide.Reference(
+            bhm=Decimal(settings["bhm"]["value"]) if "bhm" in settings else base.bhm,
+            bhm_basis=settings["bhm"]["basis"] if "bhm" in settings else base.bhm_basis,
+            k_council=Decimal(settings["k_council"]["value"]) if "k_council" in settings else base.k_council,
+            k_council_basis=settings["k_council"]["basis"] if "k_council" in settings else base.k_council_basis,
+            zones={r["key"]: (r["value"], r["basis"]) for r in rows if r["kind"] == "zone"},
+            central_streets=streets)
+
+    def description(job: dict) -> dict | None:
+        """The object as the conclusion describes it (read by code, see pipeline.object_description)."""
+        result = job["result"]
+        if "object" in result:
+            return result["object"]
+        if job["id"] not in descriptions:
+            path = Path([f for f in result["files"] if f["role"] == "conclusion"][0]["path"])
+            descriptions[job["id"]] = pipeline.object_description(ingest.ingest(path)) if path.exists() else None
+        return descriptions[job["id"]]
+
+    def saved_calc(job: dict) -> dict:
+        saved = job["calc"] or {}
+        return {} if saved == OLD_DEFAULT_CALC else saved
+
     def build_view(job: dict) -> dict:
-        """Assessment plus the state of staff decisions."""
+        """Assessment, the system's recommendation, and the state of staff decisions."""
         a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["matches"])
+        rec = decide.recommend(a, description(job), load_reference(), job["permitted_floors"],
+                               saved_calc(job).get("ko") or None)
+        a["recommendation"] = rec
         decisions = store.decisions(job["id"])
+        locked = job["status"] == "finalized"
         states: dict[str, dict] = {}
         for code in volumes.VOLUME_CODES:
-            d, proposal = decisions.get(code), a["volumes"][code]["proposal"]
-            stale = bool(d and d["status"] == "confirmed" and d["proposal"] != proposal)
+            auto = rec["volumes"][code]
+            a["volumes"][code]["auto"] = auto
+            d = decisions.get(code)
+            # a confirmation is tied to the value that was on screen; if the recommendation moves, confirm again
+            stale = bool(d and not locked and d["status"] == "confirmed" and d["proposal"] != auto["value"])
             states[code] = {"decision": d, "stale": stale, "valid": bool(d) and not stale,
                             "value": d["value"] if d and not stale else None}
         a["decisions"] = states
@@ -238,15 +284,34 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         a["attention"] = attention(a)
         return a
 
-    def calc_inputs(job: dict) -> dict:
-        saved = job["calc"] or {}
-        return {"kt": saved.get("kt", "new"), "ko": saved.get("ko", "other"), "kz": saved.get("kz", "500k-1m"),
-                "kz_value": saved.get("kz_value", ""), "kj": saved.get("kj", "central"),
-                "k_council": saved.get("k_council", "1"), "bhm": saved.get("bhm", str(fee.BHM_DEFAULT))}
+    def recommended_calc(rec: dict) -> dict:
+        return {**{g: rec["coefficients"][g]["code"] or "" for g in GROUPS}, "kz_value": "",
+                "k_council": rec["k_council"]["value"], "bhm": rec["bhm"]["value"]}
 
-    def compute_fee(view: dict, calc: dict) -> dict:
-        """Fee from confirmed volumes and staff-chosen coefficients. FeeError -> HTTP 422 (handler below)."""
-        missing = [c for c in volumes.VOLUME_CODES if not view["decisions"][c]["valid"]]
+    def calc_inputs(job: dict, rec: dict) -> dict:
+        """The recommendation, overridden by whatever staff chose differently; a finalized job keeps its own."""
+        if job["final"] is not None:
+            return dict(job["final"]["calc"])
+        return {**recommended_calc(rec), **saved_calc(job)}
+
+    def save_calc(job_id: int, calc: dict, rec: dict) -> None:
+        """Only choices that differ from the recommendation are stored, so that a later change of the
+        reference data still reaches every job in which nobody decided otherwise."""
+        base = recommended_calc(rec)
+        store.set_job(job_id, calc={k: v for k, v in calc.items() if v != base[k]})
+
+    def compute_fee(view: dict, calc: dict, proposed: bool = False) -> dict:
+        """Fee from the volumes and the coefficients. FeeError -> HTTP 422 (handler below).
+
+        Only confirmed volumes count, unless `proposed`: then a volume nobody has decided yet takes the
+        system's recommendation (the proposal page shows what approval would produce)."""
+        values = {c: view["decisions"][c]["value"] if view["decisions"][c]["valid"]
+                  else (view["volumes"][c]["auto"]["value"] if proposed else None) for c in volumes.VOLUME_CODES}
+        missing = [c for c in volumes.VOLUME_CODES if values[c] is None]
+        undecided = [g for g in GROUPS if not calc[g]]
+        if undecided:
+            return {"missing": missing, "undecided": undecided, "coefficients": {}, "options": {}, "result": None,
+                    "industrial": None}
         kz_entered = verify.parse_number(calc["kz_value"]) if calc["kz_value"] else None
         coefficients = {
             "kt": fee.option_value("kt", calc["kt"]), "ko": fee.option_value("ko", calc["ko"]),
@@ -254,14 +319,14 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             "k_council": decimal_field(calc["k_council"], "Kengash koeffitsiyenti"),
             "bhm": decimal_field(calc["bhm"], "BHM"),
         }
-        out: dict = {"missing": missing, "coefficients": {k: str(v) for k, v in coefficients.items()},
-                     "options": {g: fee.option(g, calc[g]).text for g in ("kt", "ko", "kz", "kj")},
+        out: dict = {"missing": missing, "undecided": [], "coefficients": {k: str(v) for k, v in coefficients.items()},
+                     "options": {g: fee.option(g, calc[g]).text for g in GROUPS},
                      "result": None, "industrial": None}
         if calc["ko"] == "industrial":
             out["industrial"] = view["industrial"]
         if missing:
             return out
-        v = {c: Decimal(view["decisions"][c]["value"]) for c in volumes.VOLUME_CODES}
+        v = {c: Decimal(values[c]) for c in volumes.VOLUME_CODES}
         r = fee.compute(fee.FeeInput(coefficients["bhm"], v["Hb"], v["Hyu"], v["Ha"], v["Ht"], v["Hu"],
                                      coefficients["kt"], coefficients["ko"], coefficients["kz"],
                                      coefficients["kj"], coefficients["k_council"]))
@@ -285,9 +350,11 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             "has_project": view["has_project"], "scalars": view["scalar_rows"], "buildings": view["buildings"],
             "site": view["site"], "totals": view["totals"], "checks": view["checks"],
             "warnings": result["warnings"], "hb_rows": view["hb_rows"], "components": view["components"],
-            "volumes": {c: {"label": volumes.VOLUME_LABELS[c], "proposal": view["volumes"][c]["proposal"],
-                            "formula": view["volumes"][c]["formula"], "notes": view["volumes"][c]["notes"],
+            "volumes": {c: {"label": volumes.VOLUME_LABELS[c], "proposal": view["volumes"][c]["auto"]["value"],
+                            "formula": view["volumes"][c]["auto"]["formula"] or view["volumes"][c]["formula"],
+                            "notes": view["volumes"][c]["notes"], "assumptions": view["volumes"][c]["auto"]["assumptions"],
                             "decision": view["decisions"][c]["decision"]} for c in volumes.VOLUME_CODES},
+            "object": description(job), "recommendation": view["recommendation"],
             "permitted_floors": job["permitted_floors"],
             "calc": calc, "fee": fee_data, "audit": store.audit_log(job["id"]),
         }
@@ -496,7 +563,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         job = get_job(job_id, need_result=True, editable=True)
         if code not in volumes.VOLUME_CODES:
             raise HTTPException(404, "Bunday hajm yo'q")
-        proposal = build_view(job)["volumes"][code]["proposal"]
+        proposal = build_view(job)["volumes"][code]["auto"]["value"]
         if proposal is None:
             raise HTTPException(409, f"{code}: taklif yo'q — qiymatni «o'zgartirish» orqali sababi bilan kiriting")
         store.set_decision(job_id, code, "confirmed", proposal, proposal, "", user)
@@ -514,7 +581,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         why = reason_field(reason)
         view = build_view(job)
         old = view["decisions"][code]["decision"]
-        store.set_decision(job_id, code, "changed", str(v), view["volumes"][code]["proposal"], why, user)
+        store.set_decision(job_id, code, "changed", str(v), view["volumes"][code]["auto"]["value"], why, user)
         store.audit(job_id, user, "volume_changed", target=code, old=old["value"] if old else "",
                     new=str(v), reason=why)
         return back(job_id, f"vol-{code}", f"{code} o'zgartirildi")
@@ -523,56 +590,132 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     @app.get("/jobs/{job_id}/calc", response_class=HTMLResponse)
     def calc_page(request: Request, job_id: int) -> Response:
         job = get_job(job_id, need_result=True)
+        view = build_view(job)
         return templates.TemplateResponse(request, "calc.html", {
-            "job": job, "view": build_view(job), "calc": calc_inputs(job), "staff": staff(request),
-            "locked": job["status"] == "finalized"})
+            "job": job, "view": view, "rec": view["recommendation"], "calc": calc_inputs(job, view["recommendation"]),
+            "staff": staff(request), "locked": job["status"] == "finalized"})
 
     def read_calc(kt: str, ko: str, kz: str, kz_value: str, kj: str, k_council: str, bhm: str) -> dict:
         return {"kt": kt, "ko": ko, "kz": kz, "kz_value": kz_value.strip(), "kj": kj,
                 "k_council": k_council.strip(), "bhm": bhm.strip()}
 
     @app.post("/jobs/{job_id}/calc/preview")
-    def calc_preview(job_id: int, kt: str = Form(...), ko: str = Form(...), kz: str = Form(...),
-                     kz_value: str = Form(""), kj: str = Form(...), k_council: str = Form("1"),
-                     bhm: str = Form(...)) -> dict:
+    def calc_preview(job_id: int, kt: str = Form(""), ko: str = Form(""), kz: str = Form(""),
+                     kz_value: str = Form(""), kj: str = Form(""), k_council: str = Form("1"),
+                     bhm: str = Form(...), proposed: int = 0) -> dict:
         job = get_job(job_id, need_result=True)
         calc = read_calc(kt, ko, kz, kz_value, kj, k_council, bhm)
-        out = compute_fee(build_view(job), calc)
         if job["status"] != "finalized":
-            store.set_job(job_id, calc=calc)
-        return out
+            save_calc(job_id, calc, build_view(job)["recommendation"])
+            job = get_job(job_id)  # the object type just chosen changes how Hb is counted
+        return compute_fee(build_view(job), calc, proposed=bool(proposed))
+
+    def finish(job_id: int, user: str, calc: dict, contract_number: str = "", contract_date: str = "") -> Response:
+        """Freeze the job: the sheet (and the contract documents made from it) never change afterwards."""
+        job = get_job(job_id, need_result=True, editable=True)
+        view = build_view(job)
+        fee_data = compute_fee(view, calc)
+        if fee_data["undecided"]:
+            raise HTTPException(409, "Tanlanmagan koeffitsiyentlar bor: " + ", ".join(g.capitalize() for g in fee_data["undecided"]))
+        if fee_data["missing"]:
+            raise HTTPException(409, "Tasdiqlanmagan hajmlar bor: " + ", ".join(fee_data["missing"]))
+        store.audit(job_id, user, "finalized", new=fee_data["result"]["fee"], reason=json.dumps(calc, ensure_ascii=False))
+        sheet = build_sheet(job, view, calc, fee_data)
+        sheet["finalized"] = {"by": user, "at": now()}
+        sheet["contract"] = {"number": contract_number.strip()[:60], "date": contract_date.strip()[:20] or now()[:10]}
+        store.set_job(job_id, final=sheet, status="finalized", finalized_at=sheet["finalized"]["at"])
+        return flash(RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303), "Ish yakunlandi")
+
+    @app.get("/jobs/{job_id}/proposal", response_class=HTMLResponse)
+    def proposal_page(request: Request, job_id: int) -> Response:
+        """The system's whole recommendation on one screen; a person only approves it (or opens the details)."""
+        job = get_job(job_id, need_result=True)
+        if job["status"] == "finalized":
+            return RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303)
+        view = build_view(job)
+        rec = view["recommendation"]
+        calc = calc_inputs(job, rec)
+        values = {c: view["decisions"][c]["value"] if view["decisions"][c]["valid"] else view["volumes"][c]["auto"]["value"]
+                  for c in volumes.VOLUME_CODES}
+        negative = (all(v is not None for v in values.values())
+                    and Decimal(values["Hb"]) + Decimal(values["Hyu"])
+                    < Decimal(values["Ha"]) + Decimal(values["Ht"]) + Decimal(values["Hu"]))
+        fee_data = ({"missing": [], "undecided": [], "result": None, "error": "Ha + Ht + Hu yig'indisi Hb + Hyu dan katta — "
+                     "hisob hajmi manfiy chiqadi. Batafsil tekshirish sahifasida hajmlarni to'g'rilang."}
+                    if negative else compute_fee(view, calc, proposed=True))
+        return templates.TemplateResponse(request, "proposal.html", {
+            "job": job, "view": view, "rec": rec, "calc": calc, "values": values, "fee": fee_data,
+            "staff": staff(request), "today": now()[:10]})
+
+    @app.post("/jobs/{job_id}/approve")
+    def approve(request: Request, job_id: int, kt: str = Form(...), ko: str = Form(...), kz: str = Form(...),
+                kz_value: str = Form(""), kj: str = Form(...), k_council: str = Form(...), bhm: str = Form(...),
+                contract_number: str = Form(""), contract_date: str = Form("")) -> Response:
+        """One step for the person: accept the recommendation for every volume nobody decided otherwise, then finalize."""
+        user = require_staff(request)
+        job = get_job(job_id, need_result=True, editable=True)
+        calc = read_calc(kt, ko, kz, kz_value, kj, k_council, bhm)
+        save_calc(job_id, calc, build_view(job)["recommendation"])
+        view = build_view(get_job(job_id))  # the object type just chosen changes how Hb is counted
+        pending = [c for c in volumes.VOLUME_CODES if not view["decisions"][c]["valid"]]
+        without = [c for c in pending if view["volumes"][c]["auto"]["value"] is None]
+        if without:
+            raise HTTPException(409, "Tizim bu hajmlar uchun taklif bera olmadi: " + ", ".join(without)
+                                + " — batafsil tekshirish sahifasida qiymatini kiriting")
+        for code in pending:
+            auto = view["volumes"][code]["auto"]
+            store.set_decision(job_id, code, "confirmed", auto["value"], auto["value"], "", user)
+            store.audit(job_id, user, "volume_confirmed", target=code, new=auto["value"],
+                        reason="tizim tavsiyasi tasdiqlandi" + (": " + "; ".join(auto["assumptions"]) if auto["assumptions"] else ""))
+        return finish(job_id, user, calc, contract_number, contract_date)
 
     @app.post("/jobs/{job_id}/finalize")
-    def finalize(request: Request, job_id: int, kt: str = Form(...), ko: str = Form(...), kz: str = Form(...),
-                 kz_value: str = Form(""), kj: str = Form(...), k_council: str = Form("1"),
+    def finalize(request: Request, job_id: int, kt: str = Form(""), ko: str = Form(""), kz: str = Form(""),
+                 kz_value: str = Form(""), kj: str = Form(""), k_council: str = Form("1"),
                  bhm: str = Form(...)) -> Response:
         user = require_staff(request)
         job = get_job(job_id, need_result=True, editable=True)
         calc = read_calc(kt, ko, kz, kz_value, kj, k_council, bhm)
-        view = build_view(job)
-        fee_data = compute_fee(view, calc)
-        if fee_data["missing"]:
-            raise HTTPException(409, "Tasdiqlanmagan hajmlar bor: " + ", ".join(fee_data["missing"]))
-        store.audit(job_id, user, "finalized", new=fee_data["result"]["fee"],
-                    reason=json.dumps(calc, ensure_ascii=False))
-        store.set_job(job_id, calc=calc)
-        job = get_job(job_id)
-        sheet = build_sheet(job, view, calc, fee_data)
-        sheet["finalized"] = {"by": user, "at": now()}
-        store.set_job(job_id, final=sheet, status="finalized", finalized_at=sheet["finalized"]["at"])
-        return flash(RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303), "Ish yakunlandi")
+        save_calc(job_id, calc, build_view(job)["recommendation"])
+        return finish(job_id, user, calc)
 
     def sheet_data(job_id: int) -> tuple[dict, dict]:
         job = get_job(job_id, need_result=True)
         if job["final"] is not None:
             return job, job["final"]
-        view, calc = build_view(job), calc_inputs(job)
+        view = build_view(job)
+        calc = calc_inputs(job, view["recommendation"])
         return job, build_sheet(job, view, calc, compute_fee(view, calc))
+
+    # ---------- contract documents ----------
+    def contract_template() -> Path:
+        return data_dir / "reference" / "contract_template.docx"
+
+    def final_sheet(job_id: int) -> dict:
+        job = get_job(job_id, need_result=True)
+        if job["final"] is None:
+            raise HTTPException(409, "Avval ishni yakunlang — shartnoma hujjatlari yakunlangan hisob bo'yicha tuziladi")
+        return job["final"]
+
+    def word(body: bytes, name: str) -> Response:
+        return Response(body, media_type=DOCX, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.get("/jobs/{job_id}/annex.docx")
+    def annex_file(job_id: int) -> Response:
+        return word(contract.annex(final_sheet(job_id)), f"hisoblash_malumotnomasi_{job_id}.docx")
+
+    @app.get("/jobs/{job_id}/contract.docx")
+    def contract_file(job_id: int) -> Response:
+        if not contract_template().exists():
+            raise HTTPException(409, "Shartnoma shabloni yuklanmagan. «Ma'lumotnoma» sahifasida Word shablonini yuklang; "
+                                     "ungacha hisoblash ma'lumotnomasini (ilova) yuklab olishingiz mumkin.")
+        return word(contract.fill(contract_template(), final_sheet(job_id)), f"shartnoma_{job_id}.docx")
 
     @app.get("/jobs/{job_id}/sheet", response_class=HTMLResponse)
     def sheet_page(request: Request, job_id: int) -> Response:
         job, sheet = sheet_data(job_id)
-        return templates.TemplateResponse(request, "sheet.html", {"job": job, "sheet": sheet, "staff": staff(request)})
+        return templates.TemplateResponse(request, "sheet.html", {
+            "job": job, "sheet": sheet, "staff": staff(request), "has_template": contract_template().exists()})
 
     @app.get("/jobs/{job_id}/sheet.json")
     def sheet_json(job_id: int) -> Response:
@@ -596,5 +739,88 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                        + [j["finalized_at"] or ""])
         return Response("﻿" + buffer.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="ishlar.csv"'})
+
+    # ---------- reference data kept by staff: what the recommendation relies on ----------
+    def settlement_key(text: str) -> str:
+        key = decide.locate(text).settlement
+        if key is None:
+            raise HTTPException(400, "Aholi punktini «Samarqand shahri» yoki «Payariq tumani» ko'rinishida yozing")
+        return key
+
+    @app.get("/reference", response_class=HTMLResponse)
+    def reference_page(request: Request) -> Response:
+        rows = store.reference_rows()
+        streets: dict[str, list[dict]] = {}
+        for r in rows:
+            if r["kind"] == "central_street":
+                streets.setdefault(r["key"].partition("|")[0], []).append(r)
+        ref = load_reference()
+        return templates.TemplateResponse(request, "reference.html", {
+            "staff": staff(request), "ref": ref, "streets": streets,
+            "zones": [r for r in rows if r["kind"] == "zone"], "log": store.reference_log(),
+            "kz_options": [o for o in fee.GROUPS["kz"] if o.value is not None],
+            "has_template": contract_template().exists(), "placeholders": contract.PLACEHOLDERS})
+
+    def reference_saved(message: str) -> Response:
+        return flash(RedirectResponse("/reference", status_code=303), message)
+
+    @app.post("/reference/setting")
+    def reference_setting(request: Request, name: str = Form(...), value: str = Form(...), basis: str = Form("")) -> Response:
+        user = require_staff(request)
+        if name not in ("bhm", "k_council"):
+            raise HTTPException(400, "Noma'lum sozlama")
+        number = decimal_field(value, "BHM" if name == "bhm" else "Kengash koeffitsiyenti", Decimal("0"))
+        if name == "bhm" and number <= 0:
+            raise HTTPException(400, "BHM musbat son bo'lishi kerak")
+        if name == "k_council" and not fee.COUNCIL_RANGE[0] <= number <= fee.COUNCIL_RANGE[1]:
+            raise HTTPException(400, "Kengash koeffitsiyenti 0,01 dan 1,5 gacha bo'lishi kerak")
+        store.set_reference("setting", name, str(number), reason_field(basis), user)
+        return reference_saved("Saqlandi")
+
+    @app.post("/reference/zone")
+    def reference_zone(request: Request, settlement: str = Form(...), code: str = Form(...), basis: str = Form("")) -> Response:
+        user = require_staff(request)
+        if code not in [o.code for o in fee.GROUPS["kz"] if o.value is not None]:
+            raise HTTPException(400, "Noma'lum hududiy zona")
+        store.set_reference("zone", settlement_key(settlement), code, reason_field(basis), user)
+        return reference_saved("Hududiy zona saqlandi")
+
+    @app.post("/reference/streets")
+    def reference_streets(request: Request, settlement: str = Form(...), streets: str = Form(...), basis: str = Form("")) -> Response:
+        """Central thoroughfare streets of one settlement, one name per line."""
+        user = require_staff(request)
+        place, why = settlement_key(settlement), reason_field(basis)
+        names = [line.strip() for line in streets.splitlines() if decide.street_key(line)]
+        if not names:
+            raise HTTPException(400, "Kamida bitta ko'cha nomini yozing (har qatorda bittadan)")
+        for name in names:
+            store.set_reference("central_street", f"{place}|{decide.street_key(name)}", name[:120], why, user)
+        return reference_saved(f"{len(names)} ta ko'cha saqlandi")
+
+    @app.post("/reference/delete")
+    def reference_delete(request: Request, kind: str = Form(...), key: str = Form(...)) -> Response:
+        user = require_staff(request)
+        if kind not in ("setting", "zone", "central_street"):
+            raise HTTPException(400, "Noma'lum yozuv turi")
+        store.delete_reference(kind, key, user)
+        return reference_saved("O'chirildi")
+
+    @app.post("/reference/template")
+    async def reference_template(request: Request, template: UploadFile = File(...)) -> Response:
+        """The organisation's own contract as a .docx with {{placeholders}}; unknown placeholders are refused."""
+        user = require_staff(request)
+        if not (template.filename or "").lower().endswith(".docx"):
+            raise HTTPException(400, "Shablon Word (.docx) fayli bo'lishi kerak")
+        target = contract_template()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        candidate = target.with_suffix(".upload")
+        candidate.write_bytes(await template.read())
+        unknown = contract.unknown_placeholders(candidate)
+        if unknown:
+            candidate.unlink()
+            raise HTTPException(400, "Shablonda noma'lum maydonlar bor: " + ", ".join("{{" + n + "}}" for n in unknown))
+        candidate.replace(target)
+        store.set_reference("setting", "contract_template", template.filename or "shablon.docx", "shartnoma shabloni", user)
+        return reference_saved("Shartnoma shabloni saqlandi")
 
     return app

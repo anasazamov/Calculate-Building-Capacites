@@ -1,15 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Hisob varaqasi — ish №{{ job.id }}{% endblock %}
 {% from "_macros.html" import jobbar %}
-{% block steps %}{{ jobbar(job, 'sheet') }}{% endblock %}
+{% block steps %}{{ jobbar(job, 'contract') }}{% endblock %}
 {% macro val(v) %}{% if v %}{% if v.value is not none %}{{ v.value }}{% if v.unit %} {{ v.unit }}{% endif %}{% else %}—{% endif %} <span class="small muted">[{{ STATUS_LABELS[v.status] }}{% if v.page %}; {{ v.file }}, {{ v.page }}-sah.: «{{ v.source_text }}»{% endif %}{% if v.reason %}; {{ v.reason }}{% endif %}{% for f in v.flags %}; ⚑ {{ f }}{% endfor %}]</span>{% else %}—{% endif %}{% endmacro %}
 {% block content %}
 {% set fin = sheet.finalized %}
 <div class="sheetbar noprint">
   <div>{% if fin %}<span class="badge ok">Yakunlangan</span>
-       {% else %}<span class="badge not_run">Qoralama — ish hali yakunlanmagan</span> <a href="/jobs/{{ job.id }}/calc">Hisobga qaytish</a>{% endif %}</div>
-  <div class="row"><button type="button" class="btn" onclick="window.print()">Chop etish</button>
-    <a class="btn secondary" href="/jobs/{{ job.id }}/sheet.json">JSON yuklab olish</a>
+       {% else %}<span class="badge not_run">Qoralama — ish hali tasdiqlanmagan</span> <a href="/jobs/{{ job.id }}/proposal">Tavsiyaga qaytish</a>{% endif %}</div>
+  <div class="row">
+    {% if fin %}{% if has_template %}<a class="btn" href="/jobs/{{ job.id }}/contract.docx">Shartnoma (Word)</a>{% endif %}
+    <a class="btn {{ 'secondary' if has_template }}" href="/jobs/{{ job.id }}/annex.docx">Hisoblash ma'lumotnomasi (Word)</a>{% endif %}
+    <button type="button" class="btn secondary" onclick="window.print()">Chop etish</button>
+    <a class="btn secondary" href="/jobs/{{ job.id }}/sheet.json">JSON</a>
     <a class="btn secondary" href="/">Barcha ishlar</a></div>
 </div>
 <div class="card paper">
@@ -38,6 +41,18 @@
 {% if sheet.fee.industrial %}<p class="small">Sanoat binosi: har qavatning 3 m dan yuqori qismi hajmi jami {{ sheet.fee.industrial.total | num }} m³ (ma'lumot uchun; avtomatik ayirilmagan).
 {% for f in sheet.fee.industrial.rows %}<br>{{ f.name }}: hajm {{ f.volume | num }}; qurilish maydoni {{ f.footprint | num }} × 3 m × {{ f.floors | num }} qavat = {{ f.within_3m | num }}; 3 m dan yuqori qism {{ f.excess | num }} m³{% endfor %}</p>{% endif %}
 
+{% if sheet.recommendation %}
+<h3>Tavsiya asoslari</h3>
+<table>
+  <tr><th>Koeffitsiyent</th><th>Tizim tavsiyasi asosi</th></tr>
+  {% for g, name in (('kt', 'Kt'), ('ko', 'Ko'), ('kz', 'Kz'), ('kj', 'Kj')) %}<tr><td>{{ name }}</td><td class="small">{{ sheet.recommendation.coefficients[g].basis }}{% if sheet.calc[g] != sheet.recommendation.coefficients[g].code %} — <b>xodim boshqa holatni tanlagan</b>{% endif %}</td></tr>{% endfor %}
+  <tr><td>Kkengash</td><td class="small">{{ sheet.recommendation.k_council.basis }}</td></tr>
+  <tr><td>BHM</td><td class="small">{{ sheet.recommendation.bhm.basis }}</td></tr>
+</table>
+{% for e in sheet.recommendation.exemptions %}<p class="flag">Istisno bo'lishi mumkin: {{ e.text }}</p>{% endfor %}
+{% endif %}
+{% if sheet.contract and sheet.contract.number %}<p class="small">Shartnoma: № {{ sheet.contract.number }}, {{ sheet.contract.date }}.</p>{% endif %}
+
 <h2>2. Hajmlar</h2>
 <table>
   <tr><th>Belgi</th><th>Ma'nosi</th><th class="n">Taklif, m³</th><th class="n">Qabul qilingan, m³</th><th>Qaror</th><th>Tarkibi / formula</th></tr>
@@ -45,7 +60,7 @@
   <tr><td><b>{{ code }}</b></td><td>{{ v.label }}</td><td class="n">{{ v.proposal | num if v.proposal is not none else '—' }}</td>
     <td class="n">{{ v.decision.value | num if v.decision else '—' }}</td>
     <td>{% if v.decision %}{{ 'tasdiqlangan' if v.decision.status == 'confirmed' else "o'zgartirilgan" }}: {{ v.decision.user }}, {{ v.decision.time }}{% if v.decision.reason %}<br>Sabab: {{ v.decision.reason }}{% endif %}{% else %}tasdiqlanmagan{% endif %}</td>
-    <td class="small">{{ v.formula }}{% for n in v.notes %}<br>• {{ n }}{% endfor %}</td></tr>
+    <td class="small">{{ v.formula }}{% for n in (v.assumptions or v.notes) %}<br>• {{ n }}{% endfor %}</td></tr>
   {% endfor %}
 </table>
 {% if sheet.permitted_floors is not none %}<p class="small">Ruxsat etilgan qavatlar soni (xodim kiritgan): {{ sheet.permitted_floors }}.</p>{% endif %}

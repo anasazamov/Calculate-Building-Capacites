@@ -146,3 +146,29 @@ def test_site_balance_checks():
     checks = pipeline._site_checks("xulosa", "conclusion", staged, [D("17347.9")])
     assert checks[0].status == verify.NOT_RUN
     assert checks[1].status == verify.WARNING and "2.9" in checks[1].detail      # 17347.9 vs 17345
+
+
+def test_object_description_is_read_by_code(tmp_path: Path):
+    import pymupdf
+    from feecalc import decide, ingest
+    doc = pymupdf.open()
+    page = doc.new_page()
+    lines = ["EKSPERTIZA XULOSASI", "Obyekt nomi: Samarqand viloyati Payariq tumani, Tomoyrot MFY, Iforli ko`chasi 36-",
+             "manzilda joylashgan savdo va maishiy xizmat ko`rsatish binosi qurilishi.", "Buyurtmachi: «Namuna» MCHJ",
+             "1.1. Loyiha hujjatlari"]
+    for i, line in enumerate(lines):
+        page.insert_text((60, 80 + 22 * i), line, fontsize=11)
+    path = tmp_path / "conclusion.pdf"
+    doc.save(str(path))
+    found = pipeline.object_description(ingest.ingest(path))
+    assert found is not None and found["page"] == 1 and found["status"] == "accepted"
+    assert found["value"] == ("Samarqand viloyati Payariq tumani, Tomoyrot MFY, Iforli ko`chasi 36-manzilda joylashgan "
+                              "savdo va maishiy xizmat ko`rsatish binosi qurilishi.")
+    assert found["source_text"].startswith("Obyekt nomi:") and found["file"] == "conclusion.pdf"
+    place = decide.locate(found["value"])
+    assert (place.settlement, place.street) == ("payariq tumani", "iforli")
+    assert decide.decide_ko(found)["code"] == "other"
+    blank = pymupdf.open()
+    blank.new_page().insert_text((60, 80), "Boshqa hujjat", fontsize=11)
+    blank.save(str(tmp_path / "blank.pdf"))
+    assert pipeline.object_description(ingest.ingest(tmp_path / "blank.pdf")) is None

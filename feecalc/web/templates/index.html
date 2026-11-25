@@ -47,7 +47,7 @@
   {% set base = '/jobs/%d' % j.id %}
   {% set url, action, kind = {
       'queued': (base, "Jarayonni ko'rish", 'secondary'), 'running': (base, "Jarayonni ko'rish", 'secondary'),
-      'ready': (base ~ '/review', 'Davom etish', ''), 'finalized': (base ~ '/sheet', 'Varaqani ochish', 'secondary'),
+      'ready': (base ~ '/proposal', "Ko'rib chiqish va tasdiqlash", ''), 'finalized': (base ~ '/sheet', 'Varaqani ochish', 'secondary'),
       'failed': (base, "Xatoni ko'rish", 'secondary')}[j.status] %}
   <tr>
     <td>{{ j.id }}</td>

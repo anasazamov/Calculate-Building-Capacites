@@ -27,7 +27,7 @@ VOLUME_LABELS: dict[str, str] = {
 
 # Level descriptions are matched on their transliterated form (Cyrillic -> Latin, apostrophes dropped),
 # so "подвал", "yerto‘la" and "yerto'la" all reduce to the same spelling.
-_BASEMENT = re.compile(r"podval|tsokol|texpodpol|yertola|ertola|sokol")
+_BASEMENT = re.compile(r"podval|podzemn|tsokol|texpodpol|yertola|ertola|yer osti|sokol")
 _TECHNICAL = re.compile(r"\btex|cherdak|krovl|chordoq")
 _MANSARD = re.compile(r"mansard")
 _FOUNDATION = re.compile(r"poydevor|fundament|tsokol qism")

@@ -75,6 +75,13 @@ p { margin: 0 0 10px; }
 .steps .error .num { background: var(--bad); border-color: var(--bad); color: #fff; }
 .steps .locked .step { opacity: .55; cursor: not-allowed; }
 
+.subnav { background: var(--surface); border-bottom: 1px solid var(--line); padding: 0 24px; display: flex; gap: 4px;
+          flex-wrap: wrap; }
+.subnav a { padding: 9px 14px; text-decoration: none; color: var(--text-2); font-weight: 500; font-size: 14.5px;
+            border-bottom: 3px solid transparent; }
+.subnav a:hover { color: var(--brand-hover); }
+.subnav a.on { color: var(--brand-hover); font-weight: 700; border-bottom-color: var(--brand); }
+
 /* ---------- buttons ---------- */
 button { font: inherit; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px;
@@ -142,6 +149,9 @@ th { background: var(--sunken); font-weight: 600; font-size: 13px; color: var(--
 tr:last-child > td { border-bottom: 0; }
 td.n, th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tablewrap { border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; background: var(--surface); }
+table.fixed { table-layout: fixed; }
+table.fixed td { overflow-wrap: anywhere; }
+table.fixed select { width: 100%; }
 
 /* ---------- dialogs and toasts ---------- */
 dialog.dialog { border: 0; border-radius: 14px; padding: 22px 24px; width: min(480px, calc(100vw - 32px));
@@ -307,6 +317,16 @@ details.edit form input[type=text], details.edit form select { width: 100%; }
 .voltile.missing { background: var(--warn-soft); border-color: var(--warn-line); }
 .voltile.missing b { color: var(--warn); font-size: 14.5px; }
 
+/* ---------- reference data ---------- */
+.refgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.reflist { list-style: none; margin: 8px 0 0; padding: 0; }
+.reflist li { display: flex; gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.reflist li:last-child { border-bottom: 0; }
+.reflist form { margin-left: auto; }
+textarea { width: 100%; min-height: 96px; }
+.card form .field input[type=text], .card form .field select { width: 100%; }
+.placeholders { columns: 2; font-size: 13px; margin: 6px 0 0; padding-left: 18px; }
+
 /* ---------- calculation sheet ---------- */
 .sheetbar { max-width: 920px; margin: 0 auto 12px; display: flex; justify-content: space-between; align-items: center;
             gap: 10px; flex-wrap: wrap; }
@@ -323,6 +343,7 @@ details.edit form input[type=text], details.edit form select { width: 100%; }
   .review { grid-template-columns: 1fr; }
   .viewer { position: relative; top: 0; height: 62vh; }
   .calc { grid-template-columns: 1fr; }
+  .refgrid { grid-template-columns: 1fr; }
   .result { position: static; }
 }
 @media (max-width: 720px) {

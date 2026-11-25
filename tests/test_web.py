@@ -85,14 +85,16 @@ def test_full_flow(client: TestClient, sample_dir: Path):
                        data={"included": "no", "reason": "Bu ish faqat Tip-2 uchun"}).status_code == 303
     assert client.post(f"/jobs/{job}/volume/Hb/confirm").status_code == 303
     assert client.post(f"/jobs/{job}/volume/Ha/confirm").status_code == 303
-    assert client.post(f"/jobs/{job}/volume/Ht/confirm").status_code == 409          # no proposal
+    # Ht: the strict proposal abstains (a height is missing); the recommendation names what it left out
+    assert "Tizim taxmini" in unescape(client.get(f"/jobs/{job}/review").text)
     assert client.post(f"/jobs/{job}/volume/Ht/change", data={"value": "168.32", "reason": ""}).status_code == 400
     assert client.post(f"/jobs/{job}/volume/Ht/change", data={"value": "abc", "reason": "sabab"}).status_code == 400
     assert client.post(f"/jobs/{job}/volume/Ht/change",
                        data={"value": "168.32", "reason": "Loyihachi hisobi"}).status_code == 303
-    assert client.post(f"/jobs/{job}/volume/Hyu/confirm").status_code == 409         # floors not entered
-    assert client.post(f"/jobs/{job}/floors", data={"permitted_floors": "16"}).status_code == 303
+    # Hyu: without permitted floors the recommendation is 0, stated as an assumption; entering the floors keeps it
     assert client.post(f"/jobs/{job}/volume/Hyu/confirm").status_code == 303
+    assert client.post(f"/jobs/{job}/floors", data={"permitted_floors": "16"}).status_code == 303
+    assert "Hyu" not in client.post(f"/jobs/{job}/calc/preview", data=CALC).json()["missing"]
     assert client.post(f"/jobs/{job}/volume/Hu/confirm").status_code == 303
 
     # changing a component afterwards makes the confirmed Hu stale
@@ -270,7 +272,7 @@ def test_home_lists_jobs_with_the_next_action(client: TestClient, sample_dir: Pa
     job = upload(client, sample_dir)
     client.post(f"/jobs/{job}/volume/Hb/confirm")
     page = unescape(client.get("/").text)
-    assert "Davom etish" in page and "5 ta hajmdan 1 tasi tasdiqlangan" in page and f'href="/jobs/{job}/review"' in page
+    assert "tasdiqlash" in page and "5 ta hajmdan 1 tasi tasdiqlangan" in page and f'href="/jobs/{job}/proposal"' in page
 
 
 def test_old_database_gets_the_new_columns(tmp_path: Path):
@@ -288,3 +290,97 @@ def test_old_database_gets_the_new_columns(tmp_path: Path):
     assert job is not None and job["title"] == "eski" and job["requests_total"] is None
     store.set_job(1, requests_total=7, requests_done=2)
     assert store.job(1)["requests_total"] == 7 and store.jobs_ahead(1) == 0
+
+
+# ---------- the system recommends, a person approves ----------
+def test_proposal_page_shows_the_whole_recommendation(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    page = unescape(client.get(f"/jobs/{job}/proposal").text)
+    for text in ("Tizim tavsiyasi", "Hajmlar", "Koeffitsiyentlar", "Xulosada qurilish turi", "Tasdiqlash va shartnomani shakllantirish"):
+        assert text in page
+    # no list of central streets has been entered: Kj is asked, the fee is not computed yet
+    assert 'name="kj" required' in page and "markaziy qatnov ko'chalari ro'yxati ma'lumotnomaga kiritilmagan" in page
+    assert "Yig'imni hisoblash uchun chap tomonda tanlang" in page
+    # the demo conclusion has no "Obyekt nomi" line: the object type rests on the largest building, said as an assumption
+    assert 'name="ko" value="other"' in page and "eng katta bino nomi" in page
+
+
+def test_one_step_approval_finalizes_and_produces_the_contract_annex(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    form = {**CALC, "contract_number": "ART-11-26-90", "contract_date": "2026-11-25"}
+    assert client.post(f"/jobs/{job}/approve", data={k: v for k, v in form.items() if k != "kj"}).status_code == 422
+    r = client.post(f"/jobs/{job}/approve", data=form)
+    assert r.status_code == 303 and r.headers["location"] == f"/jobs/{job}/sheet"
+    sheet = client.get(f"/jobs/{job}/sheet.json").json()
+    assert sheet["finalized"]["by"] == "Sinov Xodim" and sheet["contract"] == {"number": "ART-11-26-90", "date": "2026-11-25"}
+    assert all(sheet["volumes"][c]["decision"]["status"] == "confirmed" for c in ("Hb", "Hyu", "Ha", "Ht", "Hu"))
+    assert sheet["volumes"]["Hyu"]["decision"]["value"] == "0" and sheet["volumes"]["Hyu"]["assumptions"]
+    assert sheet["recommendation"]["coefficients"]["kt"]["code"] == "new" and sheet["calc"]["kj"] == "other"
+    confirmations = [a for a in sheet["audit"] if a["action"] == "volume_confirmed"]
+    assert len(confirmations) == 5 and all("tizim tavsiyasi" in a["reason"] for a in confirmations)
+    annex = client.get(f"/jobs/{job}/annex.docx")
+    assert annex.status_code == 200 and annex.content[:2] == b"PK" and "wordprocessingml" in annex.headers["content-type"]
+    assert client.get(f"/jobs/{job}/contract.docx").status_code == 409          # no template uploaded
+    assert client.get(f"/jobs/{job}/proposal").status_code == 303               # a finalized job goes to its sheet
+    assert client.post(f"/jobs/{job}/approve", data=form).status_code == 409    # and cannot be approved twice
+    html = unescape(client.get(f"/jobs/{job}/sheet").text)
+    assert "Hisoblash ma'lumotnomasi (Word)" in html and "Tavsiya asoslari" in html and "ART-11-26-90" in html
+
+
+def test_staff_decisions_survive_approval(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    assert client.post(f"/jobs/{job}/volume/Ht/change", data={"value": "168.32", "reason": "Loyihachi hisobi"}).status_code == 303
+    assert client.post(f"/jobs/{job}/approve", data=CALC).status_code == 303
+    sheet = client.get(f"/jobs/{job}/sheet.json").json()
+    assert sheet["volumes"]["Ht"]["decision"]["status"] == "changed" and sheet["volumes"]["Ht"]["decision"]["value"] == "168.32"
+
+
+def test_reference_data_drives_the_recommendation(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    from feecalc.web.app import create_app  # noqa: F401  (the view is built by the app; read it through the page)
+    assert client.post("/reference/streets", data={"settlement": "Samarqand", "streets": "Maysazor", "basis": "sinov"}).status_code == 400
+    assert client.post("/reference/streets", data={"settlement": "Samarqand shahri", "streets": "Maysazor", "basis": ""}).status_code == 400
+    saved = client.post("/reference/streets", data={"settlement": "Samarqand shahri", "streets": "Rudakiy ko'chasi\nMaysazor",
+                                                    "basis": "Hokim qarori 12.01.2026 №5"})
+    assert saved.status_code == 303
+    page = unescape(client.get(f"/jobs/{job}/proposal").text)
+    assert "markaziy qatnov ko'chalari ro'yxatida" in page and 'name="kj" value="central"' in page
+    assert "Yig'im summasi" in page                                  # everything is decided: the fee is shown
+    assert client.post("/reference/setting", data={"name": "bhm", "value": "450000", "basis": "sinov uchun"}).status_code == 303
+    assert "450 000" in unescape(client.get(f"/jobs/{job}/proposal").text)
+    assert client.post("/reference/setting", data={"name": "k_council", "value": "2", "basis": "sinov"}).status_code == 400
+    assert client.post("/reference/zone", data={"settlement": "Samarqand shahri", "code": "100k-250k", "basis": "sinov"}).status_code == 303
+    assert 'name="kz" value="100k-250k"' in client.get(f"/jobs/{job}/proposal").text
+    ref = unescape(client.get("/reference").text)
+    assert "Maysazor" in ref and "Hokim qarori 12.01.2026" in ref and "samarqand shahri" in ref
+    assert client.post("/reference/delete", data={"kind": "central_street", "key": "samarqand shahri|maysazor"}).status_code == 303
+    assert 'name="kj" value="other"' in client.get(f"/jobs/{job}/proposal").text   # the street is no longer on the list
+    client.cookies.clear()
+    assert client.post("/reference/delete", data={"kind": "zone", "key": "samarqand shahri"}).status_code == 400
+
+
+def test_contract_template_is_checked_and_filled(client: TestClient, sample_dir: Path, tmp_path: Path):
+    from docx import Document
+    login(client)
+    job = upload(client, sample_dir)
+    good, bad = Document(), Document()
+    good.add_paragraph("Shartnoma № {{shartnoma_raqami}}: yig'im {{yigim}} ({{ yigim_soz }}) so'm, Hb = {{hb}} m3.")
+    bad.add_paragraph("Summa {{summa}}")
+    good.save(str(tmp_path / "good.docx")); bad.save(str(tmp_path / "bad.docx"))
+    with open(tmp_path / "bad.docx", "rb") as f:
+        refused = client.post("/reference/template", files={"template": ("bad.docx", f, "application/octet-stream")})
+    assert refused.status_code == 400 and "summa" in refused.json()["detail"]
+    with open(tmp_path / "good.docx", "rb") as f:
+        assert client.post("/reference/template", files={"template": ("good.docx", f, "application/octet-stream")}).status_code == 303
+    assert client.post(f"/jobs/{job}/approve", data={**CALC, "contract_number": "ART-1"}).status_code == 303
+    filled = client.get(f"/jobs/{job}/contract.docx")
+    assert filled.status_code == 200
+    (tmp_path / "out.docx").write_bytes(filled.content)
+    text = Document(str(tmp_path / "out.docx")).paragraphs[0].text
+    fee_value = client.get(f"/jobs/{job}/sheet.json").json()["fee"]["result"]["fee"]
+    from feecalc import contract
+    assert "ART-1" in text and contract.money(fee_value) in text and contract.in_words(int(fee_value)) in text and "{{" not in text

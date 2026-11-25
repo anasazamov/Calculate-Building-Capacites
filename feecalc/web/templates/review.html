@@ -2,7 +2,7 @@
 {% from "_macros.html" import jobbar %}
 {% block title %}Tekshirish — ish №{{ job.id }}{% endblock %}
 {% block main_class %}wide{% endblock %}
-{% block steps %}{{ jobbar(job, 'review', view.all_confirmed) }}{% endblock %}
+{% block steps %}{{ jobbar(job, 'approve', 'review') }}{% endblock %}
 
 {# Attributes that make an element open its source page and highlight the snippet in the viewer. #}
 {% macro src(v) -%}
@@ -125,13 +125,14 @@
          {% else %}<span class="badge not_run">tasdiqlanmagan</span>{% endif %}</div>
   </div>
   <div class="figures">
-    <div><div class="small muted">Tizim taklifi</div><div class="value">{% if v.proposal is not none %}{{ v.proposal | money }} m³{% else %}—{% endif %}</div></div>
+    <div><div class="small muted">Tizim taklifi</div><div class="value">{% if v.auto.value is not none %}{{ v.auto.value | money }} m³{% else %}—{% endif %}</div></div>
     {% if d.valid %}<div><div class="small muted">Qabul qilingan qiymat</div><div class="value">{{ d.decision.value | money }} m³</div></div>{% endif %}
   </div>
   {% if d.valid %}<div class="small muted" style="margin-bottom:6px">{{ d.decision.user }}, {{ d.decision.time }}{% if d.decision.reason %} — sabab: {{ d.decision.reason }}{% endif %}</div>{% endif %}
-  {% if v.proposal is none %}<div class="callout warn">Tizim bu hajm uchun taklif bera olmadi{% if code == 'Hyu' and job.permitted_floors is none %}: avval quyida ruxsat etilgan qavatlar sonini kiriting{% endif %}. Sababi quyida yozilgan. Qiymatni o'zingiz bilsangiz, «O'zgartirish» orqali sababi bilan kiriting.</div>{% endif %}
-  {% if v.formula %}<div class="formula">{{ v.formula }}</div>{% endif %}
-  {% for n in v.notes %}<div class="flag">• {{ n }}</div>{% endfor %}
+  {% if v.auto.value is none %}<div class="callout warn">Tizim bu hajm uchun taklif bera olmadi. Sababi quyida yozilgan. Qiymatni bilsangiz, «O'zgartirish» orqali sababi bilan kiriting.</div>{% endif %}
+  {% if v.auto.formula or v.formula %}<div class="formula">{{ v.auto.formula or v.formula }}</div>{% endif %}
+  {% if v.auto.assumptions %}<div class="callout warn" style="margin-top:8px"><b>Tizim taxmini</b><ul>{% for n in v.auto.assumptions %}<li>{{ n }}</li>{% endfor %}</ul></div>
+  {% else %}{% for n in v.notes %}<div class="flag">• {{ n }}</div>{% endfor %}{% endif %}
   {% if v.check %}<div class="small" style="margin-top:4px"><span class="badge {{ v.check.status }}">{{ CHECK_LABELS[v.check.status] }}</span> {{ v.check.detail }}</div>{% endif %}
 
   {% if code == 'Hyu' %}
@@ -139,7 +140,7 @@
     <div class="field" style="margin:0"><label for="floors">Ruxsat etilgan qavatlar soni</label>
       <input id="floors" type="number" name="permitted_floors" min="0" max="200" style="width:120px" value="{{ job.permitted_floors if job.permitted_floors is not none else '' }}" required {% if locked %}disabled{% endif %}></div>
     {% if not locked %}<button class="btn secondary" type="submit">Saqlash va taklifni hisoblash</button>{% endif %}
-    <span class="hint" style="flex-basis:100%">Bu sonni siz kiritasiz. Hujjatdan o'qilgan qavatlar soni (bir nechta bino bo'lsa eng balandi): <b>{{ view.floors or '—' }}</b>.</span>
+    <span class="hint" style="flex-basis:100%">Ixtiyoriy: ART'dagi ruxsat etilgan qavatlar soni ma'lum bo'lsa kiriting — tizim undan yuqori hajmni hisoblaydi. Hujjatdan o'qilgan qavatlar soni (bir nechta bino bo'lsa eng balandi): <b>{{ view.floors or '—' }}</b>.</span>
   </form>
   {% endif %}
 
@@ -178,7 +179,7 @@
   <div class="vol-actions">
     {% if not (d.valid and d.decision.status == 'confirmed') %}
     <form method="post" action="/jobs/{{ job.id }}/volume/{{ code }}/confirm">
-      <button type="submit" class="btn" {% if v.proposal is none %}disabled{% endif %}>{{ 'Qayta tasdiqlash' if d.stale else 'Taklifni tasdiqlash' }}</button></form>
+      <button type="submit" class="btn" {% if v.auto.value is none %}disabled{% endif %}>{{ 'Qayta tasdiqlash' if d.stale else 'Taklifni tasdiqlash' }}</button></form>
     {% endif %}
     <details class="edit"><summary>O'zgartirish…</summary>
       <form method="post" action="/jobs/{{ job.id }}/volume/{{ code }}/change">
@@ -186,7 +187,7 @@
         {{ reason_field() }}
         <button type="submit" class="btn">Saqlash</button>
       </form></details>
-    {% if v.proposal is none %}<span class="hint">Taklif yo'q, shuning uchun «Taklifni tasdiqlash» o'chiq.</span>{% endif %}
+    {% if v.auto.value is none %}<span class="hint">Taklif yo'q, shuning uchun «Taklifni tasdiqlash» o'chiq.</span>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -305,7 +306,7 @@
 <div class="actionbar noprint">
   <div>{% if view.all_confirmed %}<span class="badge ok">Barcha hajmlar tasdiqlangan</span>
        {% else %}<span class="badge not_run">Tasdiqlanmagan hajmlar bor</span> <span class="small muted">{% for code in VOLUME_CODES if not view.decisions[code].valid %}{{ code }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}</div>
-  <a class="btn {{ '' if view.all_confirmed else 'secondary' }}" href="/jobs/{{ job.id }}/calc">Hisobga o'tish →</a>
+  <a class="btn" href="/jobs/{{ job.id }}/{{ 'sheet' if locked else 'proposal' }}">{{ 'Shartnomaga' if locked else 'Tizim tavsiyasiga' }} qaytish →</a>
 </div>
 </section>
 </div>

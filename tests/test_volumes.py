@@ -229,3 +229,9 @@ def test_one_statement_can_give_two_heights():
     # the foundation height is never used as a storey height
     hs = volumes.collect_heights([], [val("0.45", level="Poydevor balandligi")])
     assert volumes.resolve_height(Level("floor", 1), hs)[0] is None
+
+
+def test_underground_floor_is_a_basement_level():
+    from feecalc import volumes
+    assert volumes.parse_level("План подземного этажа на отм. -3.200м").kind == "basement"
+    assert volumes.parse_level("yer osti qavati").kind == "basement"

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Ma'lumotnoma{% endblock %}
+{% macro basis_field() -%}
+<div class="field"><label>Asosi (majburiy)</label><input type="text" name="basis" required minlength="3" placeholder="qaror raqami va sanasi yoki boshqa manba"></div>
+{%- endmacro %}
+{% block content %}
+<h1>Ma'lumotnoma</h1>
+<p class="lead">Tizim tavsiya berishda hujjatdagi yozuvlar bilan birga shu yerdagi ma'lumotlarga tayanadi. Har bir yozuvning asosi yoziladi; kim va qachon o'zgartirgani saqlanadi. Yozuv o'zgarsa, hali tasdiqlanmagan barcha ishlarning tavsiyasi yangilanadi.</p>
+
+<div class="refgrid">
+<div>
+  <div class="card" id="streets">
+    <h2>Markaziy qatnov ko'chalari <span class="muted" style="font-weight:400">(Kj)</span></h2>
+    <p>Ro'yxatdagi ko'chada joylashgan obyektga <b>1</b>, boshqa hududdagisiga <b>0,6</b> tavsiya qilinadi. Aholi punkti uchun ro'yxat kiritilmagan bo'lsa, tizim Kj ni tavsiya qilmaydi va xodimdan so'raydi.</p>
+    <form method="post" action="/reference/streets">
+      <div class="field"><label for="st-place">Aholi punkti</label><input id="st-place" type="text" name="settlement" required placeholder="masalan: Samarqand shahri yoki Payariq tumani"></div>
+      <div class="field"><label for="st-names">Ko'chalar — har qatorda bittadan</label><textarea id="st-names" name="streets" required placeholder="Rudakiy&#10;Mirzo Ulug'bek&#10;Amir Temur"></textarea></div>
+      {{ basis_field() }}
+      <button type="submit" class="btn">Ro'yxatga qo'shish</button>
+    </form>
+    {% for place, rows in streets.items() %}
+    <h3>{{ place }} — {{ rows | length }} ta ko'cha</h3>
+    <ul class="reflist">{% for r in rows %}
+      <li><span><b>{{ r.value }}</b> <span class="small muted">— {{ r.basis }} ({{ r.user }}, {{ r.time }})</span></span>
+        <form method="post" action="/reference/delete"><input type="hidden" name="kind" value="central_street"><input type="hidden" name="key" value="{{ r.key }}">
+          <button type="submit" class="btn secondary small">O'chirish</button></form></li>{% endfor %}
+    </ul>
+    {% else %}<p class="callout warn" style="margin:12px 0 0">Hali birorta ko'cha kiritilmagan — shuning uchun Kj har bir ishda xodimdan so'raladi.</p>{% endfor %}
+  </div>
+
+  <div class="card" id="zones">
+    <h2>Hududiy zonalar <span class="muted" style="font-weight:400">(Kz)</span></h2>
+    <p>Yozuv kiritilmagan bo'lsa, tizim shunday tavsiya qiladi: Samarqand shahri — 0,5 (aholisi 500 ming – 1 mln); Samarqand viloyatining boshqa aholi punktlari — 0,05 (100 minggacha). Boshqacha bo'lishi kerak bo'lgan aholi punktini shu yerga kiriting.</p>
+    <form method="post" action="/reference/zone">
+      <div class="field"><label for="z-place">Aholi punkti</label><input id="z-place" type="text" name="settlement" required placeholder="masalan: Kattaqo'rg'on shahri"></div>
+      <div class="field"><label for="z-code">Zona</label><select id="z-code" name="code">{% for o in kz_options %}<option value="{{ o.code }}">{{ o.text }}</option>{% endfor %}</select></div>
+      {{ basis_field() }}
+      <button type="submit" class="btn">Saqlash</button>
+    </form>
+    {% if zones %}<ul class="reflist">{% for r in zones %}
+      <li><span><b>{{ r.key }}</b> → {% for o in kz_options if o.code == r.value %}{{ o.text }}{% endfor %} <span class="small muted">— {{ r.basis }} ({{ r.user }}, {{ r.time }})</span></span>
+        <form method="post" action="/reference/delete"><input type="hidden" name="kind" value="zone"><input type="hidden" name="key" value="{{ r.key }}">
+          <button type="submit" class="btn secondary small">O'chirish</button></form></li>{% endfor %}
+    </ul>{% endif %}
+  </div>
+</div>
+
+<div>
+  <div class="card" id="settings">
+    <h2>BHM va Kengash koeffitsiyenti</h2>
+    <form method="post" action="/reference/setting" style="margin-bottom:14px">
+      <input type="hidden" name="name" value="bhm">
+      <div class="field"><label for="s-bhm">Bazaviy hisoblash miqdori (BHM), so'm</label><input id="s-bhm" type="text" name="value" inputmode="numeric" value="{{ ref.bhm | num }}" required></div>
+      <p class="hint">Hozirgi asos: {{ ref.bhm_basis }}</p>
+      {{ basis_field() }}
+      <button type="submit" class="btn">BHMni saqlash</button>
+    </form>
+    <form method="post" action="/reference/setting">
+      <input type="hidden" name="name" value="k_council">
+      <div class="field"><label for="s-kc">Kengash koeffitsiyenti (0,01–1,5)</label><input id="s-kc" type="text" name="value" inputmode="decimal" value="{{ ref.k_council | num }}" required></div>
+      <p class="hint">Hozirgi asos: {{ ref.k_council_basis }}</p>
+      {{ basis_field() }}
+      <button type="submit" class="btn">Koeffitsiyentni saqlash</button>
+    </form>
+  </div>
+
+  <div class="card" id="template">
+    <h2>Shartnoma shabloni</h2>
+    <p>{% if has_template %}<span class="badge ok">shablon yuklangan</span> Yakunlangan ishda «Shartnoma (Word)» tugmasi shu shablonni to'ldirib beradi.
+       {% else %}<span class="badge not_run">shablon yuklanmagan</span> Hozircha tizim faqat hisoblash ma'lumotnomasini (shartnomaga ilova) tayyorlaydi.{% endif %}</p>
+    <p>O'z shartnomangizning Word (.docx) nusxasida o'zgaradigan joylarga quyidagi belgilarni yozib yuklang — tizim ularni har bir ishning qiymatlari bilan almashtiradi.</p>
+    <form method="post" action="/reference/template" enctype="multipart/form-data" class="row" style="align-items:center">
+      <input type="file" name="template" accept=".docx" required>
+      <button type="submit" class="btn">Shablonni yuklash</button>
+    </form>
+    <details class="sub"><summary>Shablonda ishlatiladigan belgilar ({{ placeholders | length }} ta)</summary>
+      <ul class="placeholders">{% for name, meaning in placeholders.items() %}<li><code>{{ '{{' }}{{ name }}{{ '}}' }}</code> — {{ meaning }}</li>{% endfor %}</ul></details>
+  </div>
+
+  <div class="card">
+    <h2>O'zgarishlar jurnali</h2>
+    {% if log %}<div class="tablewrap"><table>
+      <tr><th>Vaqt</th><th>Xodim</th><th>Amal</th><th>Yozuv</th><th>Qiymat</th></tr>
+      {% for r in log %}<tr class="small"><td>{{ r.time }}</td><td>{{ r.user }}</td><td>{{ "o'chirildi" if r.action == 'delete' else 'saqlandi' }}</td><td>{{ r.key }}</td><td>{{ r.new or r.old }}</td></tr>{% endfor %}
+    </table></div>{% else %}<p class="muted">Hali o'zgarish yo'q.</p>{% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}

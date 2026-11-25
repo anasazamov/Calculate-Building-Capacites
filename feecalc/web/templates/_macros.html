@@ -1,7 +1,8 @@
 {# Shared macros. Imported macros do not see the page context, so everything is passed in. #}
 
-{# The bar under the header on every job page: job name and the five steps of the journey. #}
-{% macro jobbar(job, current, confirmed=false) %}
+{# The bar under the header on every job page: the job name and the four steps of the journey.
+   Step 3 has three views (the system's recommendation, the detailed review, the coefficients). #}
+{% macro jobbar(job, current, sub='') %}
 {% set ready = job.result is not none %}
 {% set final = job.status == 'finalized' %}
 {% set base = '/jobs/%d' % job.id %}
@@ -11,9 +12,8 @@
     {% for key, label, url, done, open in (
         ('upload', 'Yuklash', '', true, true),
         ('read', "O'qish", base, ready, true),
-        ('review', 'Tekshirish', base ~ '/review', final or confirmed, ready),
-        ('calc', 'Hisob', base ~ '/calc', final, ready),
-        ('sheet', 'Varaqa', base ~ '/sheet', final, ready)) %}
+        ('approve', 'Tavsiya va tasdiqlash', base ~ ('/review' if final else '/proposal'), final, ready),
+        ('contract', 'Shartnoma', base ~ '/sheet', final, ready)) %}
     {% set here = key == current %}
     <li class="{{ 'current' if here else ('done' if done else '') }}{{ ' error' if key == 'read' and job.status == 'failed' }}{{ ' locked' if not open }}"{% if here %} aria-current="step"{% endif %}>
       {% if url and open and not here %}<a class="step" href="{{ url }}">{% else %}<span class="step"{% if not open %} title="Avval hujjatlar o'qib bo'linishi kerak"{% endif %}>{% endif %}
@@ -23,4 +23,11 @@
     {% endfor %}
   </ol>
 </div>
+{% if current == 'approve' and ready %}
+<nav class="subnav noprint" aria-label="Tavsiya va tafsilotlar">
+  {% if not final %}<a href="{{ base }}/proposal"{% if sub == 'proposal' %} class="on" aria-current="page"{% endif %}>Tizim tavsiyasi</a>{% endif %}
+  <a href="{{ base }}/review"{% if sub == 'review' %} class="on" aria-current="page"{% endif %}>Batafsil tekshirish</a>
+  <a href="{{ base }}/calc"{% if sub == 'calc' %} class="on" aria-current="page"{% endif %}>Koeffitsiyentlar va hisob</a>
+</nav>
+{% endif %}
 {% endmacro %}

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_macros.html" import jobbar %}
+{% block title %}Tizim tavsiyasi — ish №{{ job.id }}{% endblock %}
+{% block steps %}{{ jobbar(job, 'approve', 'proposal') }}{% endblock %}
+{% block content %}
+<h1>Tizim tavsiyasi</h1>
+<p class="lead">Tizim hujjatlarni o'qib, hajmlar va koeffitsiyentlarni o'zi taklif qildi va har birining asosini yozdi. Ko'rib chiqing: to'g'ri bo'lsa — tasdiqlang. Biror narsa noto'g'ri bo'lsa, yuqoridagi «Batafsil tekshirish» yoki «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
+
+{% for e in rec.exemptions %}<div class="callout bad"><b>Istisno bo'lishi mumkin.</b> {{ e.text }}</div>{% endfor %}
+{% if rec.open %}
+<div class="callout warn"><b>Tizim quyidagilarni o'zi hal qila olmadi — bu yerda sizning qaroringiz kerak:</b>
+  <ul>{% for o in rec.open %}{% if o.scope | lower not in calc or not calc[o.scope | lower] %}<li><b>{{ o.scope }}</b>: {{ o.text }}</li>{% endif %}{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/jobs/{{ job.id }}/approve" class="calc" id="approve"
+      data-confirm-title="Tavsiyani tasdiqlaysizmi?" data-confirm-ok="Ha, tasdiqlash"
+      data-confirm="Barcha hajmlar va koeffitsiyentlar shu ko'rinishda qabul qilinadi, ish yakunlanadi va shartnoma hujjatlari tayyorlanadi. Keyin o'zgartirib bo'lmaydi.">
+  <div>
+    <div class="card">
+      <h2>Obyekt</h2>
+      {% if rec.description %}<p>{{ rec.description.value }}</p>{% else %}<p class="muted">Xulosadan obyekt nomi o'qilmadi.</p>{% endif %}
+      <div class="tablewrap"><table>
+        {% for r in view.scalar_rows if r.label != 'Manzil' %}{% set v = r.conclusion or r.project %}
+        <tr><td style="width:32%"><b>{{ r.label }}</b></td><td>{% if v and v.value is not none %}{{ v.value }}{% else %}<span class="muted">topilmadi</span>{% endif %}
+          {% if v and v.status != 'accepted' and v.value is not none %} <span class="badge {{ v.status }}">{{ STATUS_LABELS[v.status] }}</span>{% endif %}</td></tr>
+        {% endfor %}
+        <tr><td><b>Aholi punkti va ko'cha</b></td><td>{{ rec.place.settlement or 'aniqlanmadi' }}{% if rec.place.street %}, {{ rec.place.street }} ko'chasi{% endif %}</td></tr>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h2>Hajmlar</h2>
+      <div class="tablewrap"><table class="fixed">
+        <tr><th style="width:24%">Hajm</th><th class="n" style="width:20%">Qiymat, m³</th><th>Asosi</th></tr>
+        {% for code in VOLUME_CODES %}{% set v = view.volumes[code] %}{% set d = view.decisions[code] %}
+        <tr>
+          <td><b>{{ code }}</b><div class="small muted">{{ VOLUME_LABELS[code] }}</div></td>
+          <td class="n"><b>{{ values[code] | money if values[code] is not none else '—' }}</b></td>
+          <td>{% if d.valid %}<span class="badge ok">xodim qarori</span> <span class="small muted">{{ d.decision.user }}, {{ d.decision.time }}{% if d.decision.reason %} — {{ d.decision.reason }}{% endif %}</span>
+              {% else %}{% if v.auto.formula %}<div class="formula">{{ v.auto.formula }}</div>{% endif %}
+                {% for t in v.auto.assumptions %}<div class="flag">• {{ t }}</div>{% endfor %}
+                {% if v.auto.value is none %}<a href="/jobs/{{ job.id }}/review#vol-{{ code }}">Qiymatni kiritish</a>{% endif %}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h2>Koeffitsiyentlar</h2>
+      <div class="tablewrap"><table class="fixed">
+        <tr><th style="width:24%">Koeffitsiyent</th><th style="width:34%">Tanlov</th><th>Asosi</th></tr>
+        {% for g in ('kt', 'ko', 'kz', 'kj') %}{% set r = rec.coefficients[g] %}
+        <tr>
+          <td><b>{{ GROUP_TITLES[g] }}</b></td>
+          <td>{% if calc[g] %}{% for o in FEE_GROUPS[g] if o.code == calc[g] %}{{ o.text }}{% endfor %}
+                <input type="hidden" name="{{ g }}" value="{{ calc[g] }}">
+                {% if calc[g] != r.code %}<div><span class="badge">siz tanlagansiz</span></div>{% endif %}
+              {% else %}<select name="{{ g }}" required data-choose aria-label="{{ GROUP_TITLES[g] }}">
+                <option value="">— tanlang —</option>{% for o in FEE_GROUPS[g] %}<option value="{{ o.code }}">{{ o.text }}</option>{% endfor %}</select>{% endif %}</td>
+          <td class="small">{{ r.basis }}{% if r.snippet %}<div class="val-src">{{ r.page }}-sahifa: <span class="snippet">{{ r.snippet }}</span></div>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        <tr><td><b>Kengash koeffitsiyenti</b></td><td>{{ calc.k_council | num }}<input type="hidden" name="k_council" value="{{ calc.k_council }}"></td><td class="small">{{ rec.k_council.basis }}</td></tr>
+        <tr><td><b>BHM</b></td><td>{{ calc.bhm | money }} so'm<input type="hidden" name="bhm" value="{{ calc.bhm }}"></td><td class="small">{{ rec.bhm.basis }}</td></tr>
+      </table></div>
+      <input type="hidden" name="kz_value" value="{{ calc.kz_value }}">
+      <p class="hint" style="margin:8px 0 0">Tavsiyalar hujjatdagi yozuvlarga va <a href="/reference">ma'lumotnoma</a>ga tayanadi. Boshqa tanlov kerak bo'lsa — «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
+    </div>
+
+    {% if view.attention %}
+    <div class="card">
+      <h2>Hujjatlardagi farqlar</h2>
+      <p>Hujjatlarni o'qishda {{ view.attention | length }} ta joyda farq yoki tasdiqlanmagan qiymat topildi. Ular tavsiyaga ta'sir qilgan bo'lsa, yuqoridagi asoslarda yozilgan.</p>
+      <a class="btn secondary" href="/jobs/{{ job.id }}/review#todo">Farqlarni ko'rish</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <aside class="result">
+    <h2>Yig'im</h2>
+    {% if fee.error %}<p class="note"><b>Hisoblab bo'lmadi:</b> {{ fee.error }}</p>
+    {% elif fee.undecided %}<p class="note">Yig'imni hisoblash uchun chap tomonda tanlang: <b>{% for g in fee.undecided %}{{ GROUP_TITLES[g] }}{{ ', ' if not loop.last }}{% endfor %}</b>.</p>
+    {% elif fee.missing %}<p class="note">Tizim bu hajmlar uchun taklif bera olmadi: <b>{{ fee.missing | join(', ') }}</b>. <a href="/jobs/{{ job.id }}/review#volumes">Qiymatini kiriting</a>.</p>
+    {% else %}{% set x = fee.result %}
+    <div class="small" style="color:#b9d0f1">Yig'im summasi</div>
+    <div class="fee">{{ x.fee | money }} so'm</div>
+    <div class="formula">{{ x.formula }}</div>
+    {% if x.floor_applied %}<p class="note">Koeffitsiyentlar ko'paytmasi {{ x.multiplier_raw }} — 0,01 dan kichik, shuning uchun 0,01 olindi.</p>{% endif %}
+    <dl><dt>Hisob hajmi</dt><dd>{{ x.chargeable_volume | money }} m³</dd>
+        <dt>Koeffitsiyentlar ko'paytmasi</dt><dd>{{ x.multiplier | num }}</dd>
+        <dt>20% oldindan to'lov</dt><dd>{{ x.advance_20 | money }} so'm</dd>
+        <dt>Qolgan 80%</dt><dd>{{ x.remainder_80 | money }} so'm</dd></dl>
+    {% endif %}
+    <div class="field"><label for="contract_number" style="color:#cfe0fa">Shartnoma raqami <span style="font-weight:400">(ixtiyoriy)</span></label>
+      <input id="contract_number" type="text" name="contract_number" maxlength="60" placeholder="masalan: ART-11-26-90" style="width:100%"></div>
+    <div class="field"><label for="contract_date" style="color:#cfe0fa">Shartnoma sanasi</label>
+      <input id="contract_date" type="text" name="contract_date" maxlength="20" value="{{ today }}" style="width:100%"></div>
+    <button type="submit" class="btn big" {% if not fee.result %}disabled{% endif %}>Tasdiqlash va shartnomani shakllantirish</button>
+    <p class="note">{% if fee.result %}{% if rec.assumptions %}Tizim {{ rec.assumptions | length }} ta taxmin qilgan — ular chap tomonda sariq bilan yozilgan. {% endif %}Tasdiqlangach ish o'zgartirilmaydi.{% else %}Yuqoridagi kamchilik bartaraf etilgach tasdiqlash mumkin bo'ladi.{% endif %}</p>
+  </aside>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+// An undecided coefficient: remember the choice and show the page again with the fee computed.
+document.querySelectorAll('[data-choose]').forEach((select) => {
+  select.addEventListener('change', async () => {
+    const form = document.getElementById('approve');
+    if ([...form.querySelectorAll('[data-choose]')].some((s) => !s.value)) return;
+    const data = new FormData(form);
+    data.delete('contract_number');
+    data.delete('contract_date');
+    await fetch('/jobs/{{ job.id }}/calc/preview?proposed=1', { method: 'POST', body: data });
+    location.reload();
+  });
+});
+</script>
+{% endblock %}

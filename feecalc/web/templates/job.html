@@ -16,15 +16,15 @@
   <div data-when="ready" hidden>
     <div class="bigicon ok">✓</div>
     <h1>Hujjatlar o'qildi</h1>
-    <p class="lead">Endi o'qilgan qiymatlarni manbasi bilan solishtirib, beshta hajmni tasdiqlang.</p>
-    <a class="btn big" href="/jobs/{{ job.id }}/review">Tekshirishni boshlash →</a>
+    <p class="lead">Tizim hajmlar va koeffitsiyentlar bo'yicha tavsiyasini tayyorladi. Ko'rib chiqing va tasdiqlang.</p>
+    <a class="btn big" href="/jobs/{{ job.id }}/proposal">Tavsiyani ko'rish →</a>
   </div>
   <div data-when="finalized" hidden>
     <div class="bigicon ok">✓</div>
     <h1>Ish yakunlangan</h1>
     <p class="lead">Hisob varaqasi tayyor. Yakunlangan ish o'zgartirilmaydi.</p>
     <a class="btn big" href="/jobs/{{ job.id }}/sheet">Hisob varaqasini ochish</a>
-    <a class="btn big secondary" href="/jobs/{{ job.id }}/review">Tekshiruvni ko'rish</a>
+    <a class="btn big secondary" href="/jobs/{{ job.id }}/review">Tafsilotlarni ko'rish</a>
   </div>
   <div data-when="failed" hidden>
     <div class="bigicon bad">!</div>
@@ -87,7 +87,7 @@ function paint(s) {
   }
   // The user was waiting on this page: take them straight to the review.
   if (last && (last === 'queued' || last === 'running') && s.status === 'ready') {
-    setTimeout(() => { location.href = `/jobs/${JOB_ID}/review`; }, 1200);
+    setTimeout(() => { location.href = `/jobs/${JOB_ID}/proposal`; }, 1200);
   }
   last = s.status;
 }

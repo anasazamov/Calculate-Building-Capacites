@@ -51,6 +51,25 @@ CREATE TABLE IF NOT EXISTS volume_decision (
     time TEXT NOT NULL,
     PRIMARY KEY (job_id, code)
 );
+CREATE TABLE IF NOT EXISTS reference (
+    kind TEXT NOT NULL,              -- setting | zone | central_street
+    key TEXT NOT NULL,               -- setting name | settlement | "settlement|street"
+    value TEXT NOT NULL,
+    basis TEXT NOT NULL DEFAULT '',  -- the decision or document the entry rests on
+    user TEXT NOT NULL,
+    time TEXT NOT NULL,
+    PRIMARY KEY (kind, key)
+);
+CREATE TABLE IF NOT EXISTS reference_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    time TEXT NOT NULL,
+    user TEXT NOT NULL,
+    action TEXT NOT NULL,            -- set | delete
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    old TEXT NOT NULL DEFAULT '',
+    new TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     job_id INTEGER NOT NULL REFERENCES job(id),
@@ -180,6 +199,31 @@ class Store:
                       "status = excluded.status, value = excluded.value, proposal = excluded.proposal, "
                       "reason = excluded.reason, user = excluded.user, time = excluded.time",
                       (job_id, code, status, value, proposal, reason, user, now()))
+
+    # ----- reference data kept by staff (central streets, zones, BHM, council coefficient) -----
+    def reference_rows(self) -> list[dict]:
+        with self.connect() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM reference ORDER BY kind, key")]
+
+    def set_reference(self, kind: str, key: str, value: str, basis: str, user: str) -> None:
+        with self.connect() as c:
+            old = c.execute("SELECT value FROM reference WHERE kind = ? AND key = ?", (kind, key)).fetchone()
+            c.execute("INSERT INTO reference (kind, key, value, basis, user, time) VALUES (?, ?, ?, ?, ?, ?) "
+                      "ON CONFLICT (kind, key) DO UPDATE SET value = excluded.value, basis = excluded.basis, "
+                      "user = excluded.user, time = excluded.time", (kind, key, value, basis, user, now()))
+            c.execute("INSERT INTO reference_log (time, user, action, kind, key, old, new) VALUES (?, ?, 'set', ?, ?, ?, ?)",
+                      (now(), user, kind, key, old["value"] if old else "", value))
+
+    def delete_reference(self, kind: str, key: str, user: str) -> None:
+        with self.connect() as c:
+            old = c.execute("SELECT value FROM reference WHERE kind = ? AND key = ?", (kind, key)).fetchone()
+            c.execute("DELETE FROM reference WHERE kind = ? AND key = ?", (kind, key))
+            c.execute("INSERT INTO reference_log (time, user, action, kind, key, old, new) VALUES (?, ?, 'delete', ?, ?, ?, '')",
+                      (now(), user, kind, key, old["value"] if old else ""))
+
+    def reference_log(self, limit: int = 40) -> list[dict]:
+        with self.connect() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM reference_log ORDER BY id DESC LIMIT ?", (limit,))]
 
     # ----- audit -----
     def audit(self, job_id: int, user: str, action: str, target: str = "", old: str = "", new: str = "",
