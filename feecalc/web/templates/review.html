@@ -79,12 +79,15 @@
     <span><input type="number" id="page" value="1" min="1" aria-label="Sahifa raqami"> / <span id="pages"></span></span>
     <button type="button" class="btn secondary small" id="next" title="Keyingi sahifa">›</button>
     <span class="spacer"></span>
-    <button type="button" class="btn secondary small" id="zoomout" title="Kichraytirish">−</button>
-    <button type="button" class="btn secondary small" id="zoomin" title="Kattalashtirish">+</button>
-    <button type="button" class="btn secondary small" id="fit">Sig'dirish</button>
+    <button type="button" class="btn secondary small" id="zoomout" title="Kichraytirish (−)">−</button>
+    <span id="zoomlevel" class="zoomlevel" aria-live="polite">100%</span>
+    <button type="button" class="btn secondary small" id="zoomin" title="Kattalashtirish (+)">+</button>
+    <button type="button" class="btn secondary small" id="fit" title="Sahifa enini oynaga sig'dirish">Eniga</button>
+    <button type="button" class="btn secondary small" id="fitpage" title="Butun sahifani oynaga sig'dirish (0)">Butun sahifa</button>
+    <button type="button" class="btn secondary small" id="wide" aria-pressed="false" title="Hujjat oynasini kengaytirish yoki toraytirish">Kengaytirish</button>
   </div>
-  <div class="canvas" id="canvas"><div class="sheet" id="sheet"><img id="img" alt="Hujjat sahifasi"></div></div>
-  <div class="bar foot"><div id="snippetinfo">Qiymatni bosing — manba parchasi sahifada sariq bilan belgilanadi.</div><div id="sheetinfo" class="muted small"></div></div>
+  <div class="canvas" id="canvas" tabindex="0" aria-label="Hujjat sahifasi: sichqoncha bilan suring, g'ildirak bilan kattalashtiring"><div class="sheet" id="sheet"><img id="img" alt="Hujjat sahifasi" draggable="false"></div></div>
+  <div class="bar foot"><div id="snippetinfo">Qiymatni bosing — manba parchasi sahifada sariq bilan belgilanadi.</div><div class="muted small"><span id="sheetinfo"></span> · Surish: sichqoncha bilan torting · Kattalashtirish: g'ildirak yoki ikki marta bosing</div></div>
 </aside>
 
 <section>
