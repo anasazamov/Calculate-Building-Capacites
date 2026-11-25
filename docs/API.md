@@ -20,7 +20,8 @@ recommendation, lets its own user approve, and stores the result. The web pages 
 | 3 | `GET /jobs/{id}/recommendation` | volumes, coefficients, fee, `expertise` (the conclusion checked against the project), `open`, `assumptions`, `exemptions`, `norms`, `ready_to_approve` |
 | 4 | `GET /jobs/{id}/values` | every value with status and source (file, page, snippet); page image and highlight: `/jobs/{id}/pages/{file}/{page}.png`, `.../{page}/rects?snippet=` |
 | 5 | `PUT /jobs/{id}/volumes/{code}` with `{value, reason, actor}` | optional; `code` is Hb, Hyu, Ha, Ht or Hu; the reason is mandatory |
-| 6 | `POST /jobs/{id}/approve` with `{kt?, ko?, kz?, kz_value?, kj?, k_council?, bhm?, contract_number?, contract_date?, actor?}` | omitted fields take the recommendation; 409 says what is still open; returns the finalized sheet |
+| 5a | `PUT /jobs/{id}/differences/{key}` with `{actor, note}` | every entry of `differences` in the recommendation (a figure the project and the conclusion state differently; the project is used) must be checked by a person before approval |
+| 6 | `POST /jobs/{id}/approve` with `{kt?, ko?, kz?, kz_value?, kj?, k_council?, bhm?, contract_number?, contract_date?, actor?}` | omitted fields take the recommendation; 409 says what is still open (unchecked differences included); returns the finalized sheet |
 | 7 | `GET /jobs/{id}/sheet`, `/annex.docx`, `/contract.docx` | after approval |
 
 Reference data: `GET /reference`, `PUT /reference/central-streets` with `{settlement, streets[], basis, actor}`.
