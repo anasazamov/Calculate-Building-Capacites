@@ -220,3 +220,13 @@ def test_a_category_suggested_by_the_model_is_never_deducted_by_itself():
     view = {"components": [row], "heights": [], "volumes": {"Hu": {"proposal": "5249.34", "formula": "5249.34", "notes": []}}}
     out = decide.decide_category(view, "Hu", residential=True)
     assert out["value"] == "0" and "model taxmin qilgan" in out["assumptions"][0]
+
+
+def test_tanks_and_pits_are_not_building_volume():
+    rows = [hb_row("Kottej", "19822.65"), hb_row("Hojatxona", "251.37"), hb_row("Oqova suvlar uchun beton handak (10m3)", "10"),
+            hb_row("Issiqlik punkti binosi", "140"), hb_row("Yong`inga qarshi suv havzasi 100 m3", "100")]
+    out = decide.decide_hb(view_with(rows, "20324.02"), industrial=False)
+    assert out["value"] == "20214.02" and not out["strict"]
+    assert sum("sig'im inshooti" in a for a in out["assumptions"]) == 2
+    kept = decide.decide_hb(view_with([{**rows[2], "override": {"included": True}}, rows[0]], "19832.65"), industrial=False)
+    assert kept["value"] == "19832.65"                              # staff put the pit back: their decision stands

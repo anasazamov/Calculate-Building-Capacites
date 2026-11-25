@@ -203,6 +203,9 @@ def exemptions(description: dict | None) -> list[dict]:
 _RESIDENTIAL = re.compile(r"turar|uy-joy|uy joy|xonadon|kvartir|zhil|kottej|yotoqxona|obshchezhit")
 
 
+_TANK = re.compile(r"handak|xandak|havza|xavza|\bura\b|rezervuar|septik|quduq|sigim|yomkost|emkost|kolodets|basseyn\s+pozhar")
+
+
 def _number(v: dict | None) -> Decimal | None:
     if v and v.get("status") == verify.ACCEPTED and v.get("number") is not None:
         return Decimal(v["number"])
@@ -224,9 +227,14 @@ def decide_hb(view: dict, industrial: bool) -> dict:
     rows = [r for r in view["hb_rows"] if r["included"]]
     if not view["hb_rows"]:
         return _volume(None, "", ["Hujjatlardan bino o'qilmadi — Hb ni kiriting"], False)
-    if strict is not None and not industrial:
+    # A pit, a reservoir or a tank is listed with its capacity in m3; that is not a building volume.
+    tanks = [r for r in rows if _TANK.search(_plain(str(r["name"]))) and not (r.get("override") or {}).get("included")]
+    rows = [r for r in rows if r not in tanks]
+    if strict is not None and not industrial and not tanks:
         return _volume(Decimal(strict), view["volumes"]["Hb"]["formula"], [], True)
-    assumptions: list[str] = []
+    assumptions: list[str] = [
+        f"{r['name']}: sig'im inshooti (handak, havza, rezervuar) — yozilgan m³ uning sig'imi, bino hajmi emas; Hb ga qo'shilmadi"
+        for r in tanks]
     parts: list[Decimal] = []
     for r in rows:
         count = Decimal(r["count"])
