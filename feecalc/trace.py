@@ -78,6 +78,16 @@ def steps(result: dict, view: dict, fee_data: dict | None = None) -> list[dict]:
                                                    ((next(x for x in norms if x["status"] == k), c) for k, c in n.most_common())),
               "mismatch" if n.get("mismatch") else ("warning" if n.get("warning") else "ok"), "norms")
 
+    judgments = result.get("judgments")
+    if judgments:
+        asked = {k: len(judgments[k]) for k in ("structures", "rooms", "sheets")}
+        from . import judge
+        open_items = sum(1 for k in asked for answers in judgments[k].values() if judge.agreed(answers) is None)
+        _step(out, "Mulohaza: bino yoki inshoot, xona toifasi, reja qavatlari", "til modeli: qoida va ta'rif savolda, mulohaza bilan; faqat modellar bir xil javob bersa qo'llanadi",
+              f"{asked['structures']} ta bino qatori, {asked['rooms']} ta xona nomi, {asked['sheets']} ta reja sarlavhasi so'raldi"
+              + (f"; {open_items} tasida modellar kelishmadi yoki aniq emas dedi — ular qo'llanmadi" if open_items else ""),
+              "warning" if open_items else "ok")
+
     rec = view["recommendation"]
     assumed = [c for c in VOLUME_CODES if rec["volumes"][c]["assumptions"] and rec["volumes"][c]["value"] is not None]
     missing = [c for c in VOLUME_CODES if rec["volumes"][c]["value"] is None]

@@ -1,0 +1,111 @@
+{
+ "model": "model1",
+ "url": "http://127.0.0.1:8001/v1",
+ "time": "2026-11-25T12:32:33",
+ "duration_s": 2.281,
+ "prompt_hash": "f3acb53b6d0f519399c28b79bf77c2755c9bc7ebe8c24fa4016ea2df95a52342",
+ "request": {
+  "model": "qwen3.8-27b",
+  "messages": [
+   {
+    "role": "system",
+    "content": "Siz loyiha albomi varaqlarini ajratuvchi mutaxassissiz. Chizma varag'ining shtampidagi matn beriladi.\nSavol: bu varaq qaysi qavat(lar)ning REJASI?\n- \"yertola\" — yerto'la (podval, sokol) rejasi;\n- \"qavatlar\" — yer usti qavat(lar)i rejasi: first va last ga birinchi va oxirgi qavat raqamini yozing (bitta qavat bo'lsa ikkalasi bir xil;\n  \"2-4 qavatlar\", \"2....4 go etaja\", \"tipovoy etaj 2-9\" kabi yozuvlar oraliqni bildiradi);\n- \"reja_emas\" — qavat rejasi emas yoki xonalarni takrorlaydigan varaq: pollar rejasi, tom, chordoq, poydevor, yopma, kesim, fasad, umumiy ma'lumotlar;\n- \"aniq_emas\" — matndan bilib bo'lmaydi.\nAvval bir jumla mulohaza, keyin javob. Faqat JSON:\n{\"reason\": \"<mulohaza>\", \"answer\": \"yertola\" | \"qavatlar\" | \"reja_emas\" | \"aniq_emas\", \"first\": <son yoki 0>, \"last\": <son yoki 0>}"
+   },
+   {
+    "role": "user",
+    "content": "Жилой комплекс. г. Наманган, ул. Темир йул 16-ти этажный жилой дом Тип-2 | Стадия РП План на отм. 0.000 | Лист 4"
+   }
+  ],
+  "max_tokens": 600,
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "answer",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "reason": {
+       "type": "string",
+       "maxLength": 400
+      },
+      "answer": {
+       "type": "string",
+       "enum": [
+        "yertola",
+        "qavatlar",
+        "reja_emas",
+        "aniq_emas"
+       ]
+      },
+      "first": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 80
+      },
+      "last": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 80
+      }
+     },
+     "required": [
+      "reason",
+      "answer",
+      "first",
+      "last"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0,
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "response": {
+  "id": "chatcmpl-a8f41a357ca3d010",
+  "object": "chat.completion",
+  "created": 1795609951,
+  "model": "qwen3.8-27b",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\"reason\": \"Matnda 'План на отм. 0.000' (0.000 belgisidagi reja) yozilgan, bu odatda birinchi qavat yoki yer sirtidagi asosiy reja uchun ishlatiladi, shuning uchun bu qavatlar rejasi hisoblanadi.\", \"answer\": \"qavatlar\", \"first\": 1, \"last\": 1}",
+     "refusal": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "stop",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null,
+    "weight_versions": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "usage": {
+   "prompt_tokens": 400,
+   "total_tokens": 501,
+   "completion_tokens": 101,
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

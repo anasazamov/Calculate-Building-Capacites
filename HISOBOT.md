@@ -208,6 +208,29 @@ savollarining hammasi to'g'ri chiqdi (ikkala model, 4/4, faqat-javob rejimida ha
 emas — (1) modelga hisoblash uchun joy berilmagan, (2) qoidalar va ta'riflar savolda yo'q, (3) «bilmayman» deyish
 imkoni berilmagan. Namuna kichik (10 savol, bir martadan).
 
+### Mulohaza bosqichi (25.11.2026, o'lchandi)
+
+`feecalc/judge.py`: o'qishdan keyin modellarga kichik aniq savollar beriladi — qoida va ta'rif savolning o'zida, qisqa
+mulohaza bilan, «aniq emas» varianti bilan, har savolda bitta narsa: (1) binolar ro'yxatidagi qator binomi yoki sig'im
+inshootimi; (2) lug'atda yo'q xona qaysi toifada; (3) kod sarlavhasini o'qiy olmagan reja varag'i qaysi qavatlarni
+ko'rsatadi. Javob faqat barcha modellar bir xil javob bersa va hech biri «aniq emas» demasa qo'llanadi. Arifmetika
+modeldan so'ralmaydi.
+
+Beshta namuna (saqlangan o'qishlar) va buyurtmachining ikki ishi, ikkala model:
+
+- Bino/inshoot: 25 qatordan 23 tasida modellar kelishdi va hammasi to'g'ri — handak va suv havzasi «inshoot», ayvon,
+  hojatxona, issiqlik punkti «bino». 2 tasida (302704, «Blok №6», «Blok №7» — nomida ma'lumot yo'q) kelishmadi va
+  javob qo'llanmadi.
+- Xona toifasi: 8 nomning hammasida kelishdi; bittasiga toifa berildi («Холл» → Hu), qolgani «boshqa».
+- Reja sarlavhasi: 13 ta so'ralgan sarlavhaning birortasida kelishuv yo'q — ular shtampdagi tasodifiy matn edi,
+  haqiqiy sarlavha emas. Bu qism hozircha foyda bermadi.
+- Tavsiya qilingan hajmlar yetti ishning hammasida qoidalar bilan bir xil chiqdi; vaqt ishga 4–23 soniya.
+
+Ya'ni bosqich shu ishlarda yangi xato kiritmadi va handak/havza holatini men yozgan qoidasiz o'zi to'g'ri topdi, lekin
+bu ishlarda natijani o'zgartirmadi — foydasi yangi uslubdagi loyihalarda ko'rinishi kerak, bu hali o'lchanmagan.
+O'lchov paytida o'zimning xatoim chiqdi va tuzatildi: shtamp matni 400 belgida kesilgani uchun reja sarlavhasi
+yo'qolib, bitta ishda chegirmalar noto'g'ri chiqqan.
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi

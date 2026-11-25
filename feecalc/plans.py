@@ -136,6 +136,16 @@ _RANGE = re.compile(r"plan\s+(\d+)\s*(?:\.{2,}|…|-|–|—|\s+i\s+|\s+va\s+)\s
 _SINGLE = re.compile(r"plan\s+(\d+)\s*-?\s*(?:go|y|chi)?\s*(?:etaj|qavat)|(\d+)\s*-?\s*qavat\s+rejasi")
 
 
+def block_of(title: str) -> str:
+    m = _BLOCK.search(verify.transliterate(title))
+    return m.group(1) if m else ""
+
+
+def is_repeat_sheet(title: str) -> bool:
+    """A sheet that repeats rooms of a storey plan or shows none (floor finishes, attic, roof, foundations)."""
+    return bool(_SKIP.search(verify.transliterate(title)))
+
+
 def sheet_storeys(title: str) -> dict | None:
     """What a plan sheet covers, read from its title block: {"block", "level": basement|floors, "floors": [...]}.
 

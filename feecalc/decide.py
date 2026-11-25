@@ -228,7 +228,9 @@ def decide_hb(view: dict, industrial: bool) -> dict:
     if not view["hb_rows"]:
         return _volume(None, "", ["Hujjatlardan bino o'qilmadi — Hb ni kiriting"], False)
     # A pit, a reservoir or a tank is listed with its capacity in m3; that is not a building volume.
-    tanks = [r for r in rows if _TANK.search(_plain(str(r["name"]))) and not (r.get("override") or {}).get("included")]
+    judged = view.get("judged_structures") or {}
+    tanks = [r for r in rows if (_TANK.search(_plain(str(r["name"]))) or judged.get(r["name"]) == "inshoot")
+             and not (r.get("override") or {}).get("included")]
     rows = [r for r in rows if r not in tanks]
     if strict is not None and not industrial and not tanks:
         return _volume(Decimal(strict), view["volumes"]["Hb"]["formula"], [], True)
@@ -332,7 +334,7 @@ def plan_volume(view: dict, code: str) -> dict | None:
         return None                                                # a storey without its plan: do not extrapolate
     parts: list[tuple[Decimal, str]] = []
     for c in rooms:
-        if c["category"] != code or not str(c["category_method"]).startswith(("dictionary", "reference", "staff")):
+        if c["category"] != code or not str(c["category_method"]).startswith(("dictionary", "reference", "staff", "model_agreed")):
             continue
         sheet = index[(c["file"], c["page"])]
         count, height = (1, basement) if sheet["level"] == "basement" else (len(sheet["floors"]), storey)

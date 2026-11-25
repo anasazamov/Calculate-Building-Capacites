@@ -1,8 +1,8 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-24T17:18:42",
- "duration_s": 51.423,
+ "time": "2026-11-25T12:33:24",
+ "duration_s": 51.226,
  "prompt_hash": "5869f4c7b32a968b63c97f8df015f31c7dcfcf31077a1d7ea3c393ba97485550",
  "request": {
   "model": "qwen3.8-27b",
@@ -972,9 +972,9 @@
   }
  },
  "response": {
-  "id": "chatcmpl-9c809623f3e24d38",
+  "id": "chatcmpl-b22a270983269a07",
   "object": "chat.completion",
-  "created": 1795540671,
+  "created": 1795609953,
   "model": "qwen3.8-27b",
   "choices": [
    {
@@ -996,7 +996,7 @@
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-d0217734",
+  "system_fingerprint": "vllm-0.34.0-1c19d697",
   "usage": {
    "prompt_tokens": 1987,
    "total_tokens": 4322,

@@ -162,7 +162,8 @@ def component_id(origin: str, file: str | None, page: int | None, name: str, val
 
 
 def build_components(project: dict, heights: list[Height], suggestions: dict[str, str],
-                     overrides: dict[str, dict], names: dict[str, str] | None = None) -> list[dict]:
+                     overrides: dict[str, dict], names: dict[str, str] | None = None,
+                     judged: dict[str, tuple[str, str]] | None = None) -> list[dict]:
     """Rooms and area-breakdown rows as volume components, with category, height and volume.
 
     `suggestions`: model-suggested categories for names missing from the dictionary.
@@ -185,6 +186,10 @@ def build_components(project: dict, heights: list[Height], suggestions: dict[str
         if category is None and classify.name_key(name) in (names or {}):
             # a name staff have decided once for all jobs (the reference list of room names)
             category, method, needs, note = (names or {})[classify.name_key(name)], "reference", False, "Ma'lumotnomadagi nomlar ro'yxati bo'yicha"
+        if category is None and classify.name_key(name) in (judged or {}):
+            # the judgment stage: every model, given the definitions, named the same category (see judge.py)
+            category, why = (judged or {})[classify.name_key(name)]
+            method, needs, note = "model_agreed", False, f"Lug'atda yo'q; modellar ta'rif bo'yicha bir xil xulosa berdi: {why}"
         if category is None:
             # Rule: a room or area that the documents do not clearly name as parking, technical or common-use
             # is ordinary usable area and is not deducted. A model's guess is shown, never applied.

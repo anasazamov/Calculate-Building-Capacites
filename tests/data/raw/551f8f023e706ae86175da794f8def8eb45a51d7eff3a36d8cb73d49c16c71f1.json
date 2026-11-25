@@ -1,0 +1,98 @@
+{
+ "model": "model1",
+ "url": "http://127.0.0.1:8001/v1",
+ "time": "2026-11-25T12:33:26",
+ "duration_s": 1.401,
+ "prompt_hash": "5790ef1fa83a0b0aed211b1ccb82935ae704abb3f322346ab401a6a7963cb901",
+ "request": {
+  "model": "qwen3.8-27b",
+  "messages": [
+   {
+    "role": "system",
+    "content": "Siz qurilish hajmini hisoblovchi mutaxassissiz. Obyekt binolari ro'yxatidan bitta qator beriladi.\nSavol: bu qator BINO mi (xonalari bor, odam kiradigan qurilish hajmi: uy, do'kon, ombor, hojatxona binosi, issiqlik punkti binosi, ayvon) yoki\nSIG'IM INSHOOTI mi (yozilgan m3 uning sig'imi: handak, septik, suv havzasi, rezervuar, quduq, o'ra, idish)?\nQoida: sig'im inshootining m3 qiymati bino hajmi emas va yig'imga kirmaydi. Nomdan aniq bilib bo'lmasa — \"aniq_emas\".\nAvval bir-ikki jumla mulohaza, keyin javob. Faqat JSON: {\"reason\": \"<mulohaza>\", \"answer\": \"bino\" | \"inshoot\" | \"aniq_emas\"}"
+   },
+   {
+    "role": "user",
+    "content": "Turar joy binosi — Tip-2"
+   }
+  ],
+  "max_tokens": 600,
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "answer",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "reason": {
+       "type": "string",
+       "maxLength": 400
+      },
+      "answer": {
+       "type": "string",
+       "enum": [
+        "bino",
+        "inshoot",
+        "aniq_emas"
+       ]
+      }
+     },
+     "required": [
+      "reason",
+      "answer"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0,
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "response": {
+  "id": "chatcmpl-8910851cf99b6298",
+  "object": "chat.completion",
+  "created": 1795610004,
+  "model": "qwen3.8-27b",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\"reason\": \"Turar joy binosi odam yashaydigan, xonalari bo'lgan qurilish hajmi hisoblanadi va u bino toifasiga kiradi.\", \"answer\": \"bino\"}",
+     "refusal": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "stop",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null,
+    "weight_versions": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "usage": {
+   "prompt_tokens": 266,
+   "total_tokens": 319,
+   "completion_tokens": 53,
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

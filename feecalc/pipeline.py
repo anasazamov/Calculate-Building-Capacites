@@ -15,7 +15,7 @@ from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
 
-from . import classify, extract, ingest, llm, plans, verify, volumes
+from . import classify, extract, ingest, judge, llm, plans, verify, volumes
 from .fee import fmt_num
 
 STAGES: tuple[tuple[str, str], ...] = (
@@ -23,7 +23,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("sheets", "Varaq turlarini aniqlash"),
     ("project", "Loyihani o'qish"),
     ("conclusion", "Xulosani o'qish"),
-    ("categories", "Xonalarni toifalash"),
+    ("categories", "Mulohaza: bino yoki inshoot, xona toifalari, reja qavatlari"),
     ("done", "Tayyor"),
 )
 
@@ -123,14 +123,18 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
 
     start = time.monotonic()
     progress("categories")
-    suggestions: dict[str, str] = {}
+    unknown: list[str] = []
     if project:
         pm = project["model1"]
         unknown = sorted(
             {x["name"] for x in pm["area_breakdown"]
              if volumes.needs_model_suggestion(x["name"], "breakdown", x["name"], x.get("level_mark"))}
             | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
-        suggestions = extract.suggest_categories(m1, unknown, raw_dir) if unknown else {}
+    draft = {"project": project, "conclusion": conclusion, "category_suggestions": {}}
+    structures = [r["name"] for r in assess(draft)["hb_rows"]]
+    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), raw_dir)
+    suggestions = {name: {"boshqa": "other", judge.UNSURE: "other"}.get(a["model1"]["answer"], a["model1"]["answer"])
+                   for name, a in judgments["rooms"].items()}
     timing["categories"] = time.monotonic() - start
 
     marks: list[dict] = []
@@ -149,7 +153,7 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         "prompt_version": extract.PROMPT_VERSION,
         "project": project, "conclusion": conclusion,
         "category_suggestions": suggestions, "level_marks": marks, "warnings": warnings,
-        "object": object_description(conclusion_pages), "plans": read_plans(files), "plan_index": read_plan_index(files),
+        "object": object_description(conclusion_pages), "plans": read_plans(files), "plan_index": read_plan_index(files, judgments), "judgments": judgments,
         "timing": {k: round(v, 2) for k, v in timing.items()},
     }
 
@@ -168,14 +172,34 @@ def read_plans(files: list[dict]) -> list[dict]:
     return out
 
 
-def read_plan_index(files: list[dict]) -> list[dict]:
-    """Which storeys every plan sheet of the project shows (from the title blocks; see plans.sheet_storeys)."""
+def title_key(page: ingest.Page) -> str:
+    """The title block of a sheet as one line: what the judgment stage is asked about."""
+    return " ".join(ingest.stamp_text(page).split())[:1500]
+
+
+def unread_plan_titles(project_files: list[tuple[Path, list[ingest.Page], dict[int, classify.SheetType]]]) -> list[str]:
+    """Title blocks of plan sheets whose storeys the code could not read from the title."""
+    return sorted({title_key(p) for _pdf, pages, kinds in project_files for p in pages
+                   if kinds[p.number].kind == "floor_plan" and not p.textless and title_key(p)
+                   and plans.sheet_storeys(title_key(p)) is None and not plans.is_repeat_sheet(title_key(p))})
+
+
+def read_plan_index(files: list[dict], judgments: dict | None = None) -> list[dict]:
+    """Which storeys every plan sheet of the project shows: from the title block by code (plans.sheet_storeys),
+    and where the code cannot read the title, from the judgment stage if the models agree."""
+    sheets = (judgments or {}).get("sheets", {})
     out: list[dict] = []
     for f in files:
         if f["role"] != "project":
             continue
         for page in ingest.ingest(Path(f["path"])):
-            found = None if page.textless else plans.sheet_storeys(ingest.stamp_text(page))
+            if page.textless:
+                continue
+            title = title_key(page)
+            found = plans.sheet_storeys(title)
+            if found is None and not plans.is_repeat_sheet(title):
+                judged = judge.storeys(judge.agreed(sheets.get(title)))
+                found = {"block": plans.block_of(title), **judged, "judged": True} if judged else None
             if found:
                 out.append({"file": f["name"], "page": page.number, **found})
     return out
@@ -470,7 +494,12 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
     paired = [pair for pair in pairs if pair["p"] is not None and pair["c"] is not None]
     album_building = c1["buildings"][paired[0]["c"]] if (len(p1["buildings"]) == 1 and paired) else None
     heights = volumes.collect_heights(p1["floor_heights"], album_building["floor_heights"] if album_building else [])
-    components = volumes.build_components(p1, heights, result.get("category_suggestions", {}), overrides, room_names)
+    judgments = result.get("judgments") or {}
+    judged_rooms = {classify.name_key(name): (answer["answer"], answer["reason"])
+                    for name, answers in judgments.get("rooms", {}).items()
+                    for answer in [judge.agreed(answers)] if answer and answer["answer"] in ("Ha", "Ht", "Hu")}
+    components = volumes.build_components(p1, heights, result.get("category_suggestions", {}), overrides, room_names,
+                                          judged_rooms)
     all_floors = [f for f in (_num(b["floors"]) for b in c1["buildings"] + p1["buildings"]) if f is not None]
     if len(p1["buildings"]) == 1:
         floors = _num(p1["buildings"][0]["floors"]) or (_num(album_building["floors"]) if album_building else None)
@@ -511,6 +540,8 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
         "heights": [{"level": h.label, "kind": h.level.kind, "value": str(h.value), "origin": h.origin} for h in heights],
         "floors": None if floors is None else str(floors),
         "industrial": {"rows": industrial, "total": str(industrial_total)},
+        "judged_structures": {name: answer["answer"] for name, answers in judgments.get("structures", {}).items()
+                              for answer in [judge.agreed(answers)] if answer},
         "project_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in p1["buildings"]],
         "conclusion_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in c1["buildings"]],
     }
