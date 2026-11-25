@@ -119,6 +119,7 @@ fractions to 0.90.
 | `FEECALC_HOST` / `FEECALC_PORT` | `127.0.0.1` / `8000` | web listen address |
 | `FEECALC_PASSWORD` | empty | HTTP Basic password (any user name); required on a non-loopback address |
 | `FEECALC_TLS_CERT` / `FEECALC_TLS_KEY` | unset | TLS pair; required on a non-loopback address |
+| `FEECALC_LOCAL_PORT` | `8000` | plain-HTTP loopback listener kept for SSH tunnels when `FEECALC_HOST` is public |
 | `FEECALC_DEGENERATE_MARKER` | `logs/degenerate_marker.jsonl` | marker file watched by the watchdog |
 
 ## Tests and measurements
