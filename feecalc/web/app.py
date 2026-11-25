@@ -27,7 +27,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import classify, contract, decide, extract, fee, ingest, llm, norms, pipeline, verify, volumes
+from .. import classify, contract, decide, extract, fee, ingest, llm, norms, pipeline, trace, verify, volumes
 from ..knowledge import KnowledgeBase
 from .store import Store, now
 
@@ -678,6 +678,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                     if negative else compute_fee(view, calc, proposed=True))
         return templates.TemplateResponse(request, "proposal.html", {
             "job": job, "view": view, "rec": rec, "calc": calc, "values": values, "fee": fee_data,
+            "steps": trace.steps(job["result"], view, fee_data),
             "staff": staff(request), "today": now()[:10]})
 
     @app.post("/jobs/{job_id}/approve")

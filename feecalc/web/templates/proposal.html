@@ -68,6 +68,19 @@
       <p class="hint" style="margin:8px 0 0">Tavsiyalar hujjatdagi yozuvlarga va <a href="/reference">ma'lumotnoma</a>ga tayanadi. Boshqa tanlov kerak bo'lsa — «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
     </div>
 
+    <details class="section" id="steps">
+      <summary>Tizim qanday hisobladi — qadamma-qadam <span class="count">{{ steps | length }} qadam</span></summary>
+      <div class="body"><div class="tablewrap"><table class="fixed">
+        <tr><th style="width:6%">№</th><th style="width:27%">Qadam</th><th style="width:27%">Vosita</th><th>Natija</th></tr>
+        {% for s in steps %}
+        <tr><td>{{ s.n }}</td>
+          <td><b>{{ s.title }}</b>{% if s.anchor %}<div><a class="small" href="/jobs/{{ job.id }}/review#{{ s.anchor }}">batafsil</a></div>{% endif %}</td>
+          <td class="small">{{ s.tool }}</td>
+          <td class="small"><span class="badge {{ s.status }}">{{ {'ok': 'bajarildi', 'warning': "e'tibor bering", 'mismatch': 'farq yoki ochiq savol'}[s.status] }}</span><div>{{ s.result }}</div></td></tr>
+        {% endfor %}
+      </table></div></div>
+    </details>
+
     <div class="card">
       <h2>Hujjatlarning qancha qismi o'qildi</h2>
       {% for f in view.coverage %}

@@ -300,6 +300,10 @@ def test_proposal_page_shows_the_whole_recommendation(client: TestClient, sample
     for text in ("Tizim tavsiyasi", "Hajmlar", "Koeffitsiyentlar", "Xulosada qurilish turi", "Tasdiqlash va shartnomani shakllantirish"):
         assert text in page
     assert "sahifadan" in page and "tasi o'qildi" in page                  # how much of each document was read
+    # the order of work is shown step by step, each with its tool
+    for text in ("Tizim qanday hisobladi", "Hujjatlarni ochish", "Har qiymatni manbasi bilan tekshirish",
+                 "Hajmlar bo'yicha qaror", "kod (Decimal)"):
+        assert text in page
     # no list of central streets has been entered: Kj is asked, the fee is not computed yet
     assert 'name="kj" required' in page and "markaziy qatnov ko'chalari ro'yxati ma'lumotnomaga kiritilmagan" in page
     assert "Yig'imni hisoblash uchun chap tomonda tanlang" in page
