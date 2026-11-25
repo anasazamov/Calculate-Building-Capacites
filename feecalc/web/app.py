@@ -81,6 +81,22 @@ def seconds_since(stamp: str | None) -> int | None:
     return max(0, int((datetime.now() - datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")).total_seconds()))
 
 
+def coverage(result: dict) -> list[dict]:
+    """How much of each document a model actually read: pages sent in a request, and the rest by sheet kind."""
+    requests = [r for doc in ("project", "conclusion") for r in result[doc].get("model1", {}).get("requests", [])]
+    read = {(r["file"], n) for r in requests for n in r["pages"]}
+    out: list[dict] = []
+    for f in result["files"]:
+        skipped: dict[str, int] = {}
+        for p in f["pages"]:
+            if (f["name"], p["number"]) not in read:
+                kind = "matnsiz sahifa" if p["textless"] else classify.SHEET_LABELS.get((p["sheet"] or {}).get("kind", ""), "boshqa")
+                skipped[kind] = skipped.get(kind, 0) + 1
+        out.append({"role": f["role"], "name": f["name"], "pages": len(f["pages"]),
+                    "read": len(f["pages"]) - sum(skipped.values()), "skipped": skipped})
+    return out
+
+
 def attention(view: dict) -> list[dict]:
     """What the reviewer should look at first: values that failed verification, documents or models that disagree.
 
@@ -282,6 +298,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         a["decisions"] = states
         a["all_confirmed"] = all(s["valid"] for s in states.values())
         a["attention"] = attention(a)
+        a["coverage"] = coverage(job["result"])
         return a
 
     def recommended_calc(rec: dict) -> dict:

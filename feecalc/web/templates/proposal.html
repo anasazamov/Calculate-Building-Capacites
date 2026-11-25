@@ -68,6 +68,16 @@
       <p class="hint" style="margin:8px 0 0">Tavsiyalar hujjatdagi yozuvlarga va <a href="/reference">ma'lumotnoma</a>ga tayanadi. Boshqa tanlov kerak bo'lsa — «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
     </div>
 
+    <div class="card">
+      <h2>Hujjatlarning qancha qismi o'qildi</h2>
+      {% for f in view.coverage %}
+      <p><b>{{ 'Loyiha' if f.role == 'project' else 'Xulosa' }}</b> ({{ f.name }}): {{ f.pages }} sahifadan <b>{{ f.read }}</b> tasi o'qildi{% if f.skipped %}.
+        O'qilmagan: {% for kind, n in f.skipped.items() %}{{ kind | lower }} — {{ n }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.</p>
+      {% endfor %}
+      {% if not view.has_project %}<p class="flag">Loyiha berilmagan: tavsiya faqat xulosaga tayanadi.</p>{% endif %}
+      <p class="hint" style="margin:0">Hozircha tizim jadvalli varaqlarni (umumiy ma'lumotlar, eksplikatsiya, pardozlash jadvali) va xulosani o'qiydi; chizma varaqlaridan (qavat rejasi, kesim, fasad) faqat sath belgilari olinadi.</p>
+    </div>
+
     {% if view.attention %}
     <div class="card">
       <h2>Hujjatlardagi farqlar</h2>
