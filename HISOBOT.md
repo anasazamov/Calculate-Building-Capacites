@@ -136,9 +136,9 @@ ruxsat etilgandan yuqori hajmni BHMning 0,5–1 baravarida baholaydi, formula es
 
 ### Tajriba: vositalarni o'zi tanlaydigan agent (25.11.2026, o'lchandi)
 
-`feecalc/agent.py` — model (Qwen) vositalar bilan (sahifalar ro'yxati, sahifani o'qish, qidirish, me'yorni
+Tajriba kodi (`feecalc/agent.py`) natija olingach repozitoriydan olib tashlandi (git tarixida bor: `bc491d2`). Unda model (Qwen) vositalar bilan (sahifalar ro'yxati, sahifani o'qish, qidirish, me'yorni
 qarash, hisoblash) qadamlarni o'zi tanlaydi; javobi asosiy tizimdagi manba tekshiruvidan o'tadi. Veb-ilovada
-ishlatilmaydi. Beshta namuna, bir martadan, 24 qadam chegarasi (`scripts/agent_experiment.py model1`):
+ishlatilmagan. Beshta namuna, bir martadan, 24 qadam chegarasi:
 
 | Obyekt | Qadam | Vaqt | Natija | Asosiy tizim |
 |---|---|---|---|---|
