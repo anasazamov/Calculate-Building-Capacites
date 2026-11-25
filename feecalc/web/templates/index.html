@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card">
   <h1>Yangi hisob-kitob</h1>
-  <p class="lead">Ekspertiza xulosasini va (bo'lsa) loyiha albomini yuklang. Tizim hajmlarni hujjatdan o'qiydi, siz ularni manbasi bilan solishtirib tasdiqlaysiz va yig'imni hisoblaysiz.</p>
+  <p class="lead">Loyiha albomini va ekspertiza xulosasini yuklang. Tizim hajmlarni loyihadan o'qiydi, xulosani loyihaga solishtirib tekshiradi, yig'imni tavsiya qiladi — siz tasdiqlaysiz.</p>
   {% if not model1_up %}<div class="callout bad"><b>O'qish modeli hozir ishlamayapti.</b> Yuklangan ish xato bilan to'xtaydi — avval administratorga murojaat qiling.</div>
   {% elif not model2_up %}<div class="callout info">Ikkinchi model hozir ishlamayapti: hujjatlar bitta model bilan o'qiladi, ikki model solishtiruvi bo'lmaydi.</div>{% endif %}
   <form method="post" action="/jobs" enctype="multipart/form-data" id="upload">
@@ -16,8 +16,8 @@
       </label>
       <label class="dropzone" data-dropzone>
         <input type="file" name="project" accept="application/pdf,.pdf" multiple>
-        <span class="dz-title">2. Loyiha albomi <em class="opt">ixtiyoriy</em></span>
-        <span class="dz-hint">Bir yoki bir nechta PDF. Loyiha bo'lmasa bo'sh qoldiring — faqat xulosa o'qiladi.</span>
+        <span class="dz-title">2. Loyiha albomi <em class="req">asosiy manba</em></span>
+        <span class="dz-hint">Asosiy manba: bir yoki bir nechta PDF. Loyihasiz faqat xulosa o'qiladi va uni tekshirib bo'lmaydi.</span>
         <span class="dz-files" data-files></span>
         <button type="button" class="btn secondary small dz-clear" data-clear hidden>Olib tashlash</button>
       </label>

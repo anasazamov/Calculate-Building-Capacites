@@ -128,6 +128,11 @@ fractions to 0.90.
 | `FEECALC_PARALLEL` | `12` | requests in flight per model; keep below the server's `MAX_SEQS` (default 16) |
 | `FEECALC_DEGENERATE_MARKER` | `logs/degenerate_marker.jsonl` | marker file watched by the watchdog |
 
+## Integration API
+
+The application is meant to run as a subsystem of another system: see `docs/API.md` (`/api/v1`,
+key in `X-API-Key`, keys set with `FEECALC_API_KEYS="name:key,..."`). The web pages use the same functions.
+
 ## Normative knowledge base
 
 ```bash

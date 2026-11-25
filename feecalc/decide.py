@@ -217,7 +217,8 @@ def _volume(value: Decimal | None, formula: str, assumptions: list[str], strict:
 
 def decide_hb(view: dict, industrial: bool) -> dict:
     """Total building volume. Where the strict proposal abstains, decide by stated rules:
-    a conclusion that disagrees with the project wins (the fee follows the expertise conclusion);
+    the project is the primary source, so where the conclusion disagrees the project value is taken
+    and the disagreement is reported as a finding about the conclusion;
     an industrial object is charged for at most 3 m of height per storey."""
     strict = view["volumes"]["Hb"]["proposal"]
     rows = [r for r in view["hb_rows"] if r["included"]]
@@ -231,10 +232,11 @@ def decide_hb(view: dict, industrial: bool) -> dict:
         count = Decimal(r["count"])
         volume = Decimal(r["volume"]) if r["volume"] is not None else None
         p, c = _number(r["project"]), _number(r["conclusion"])
-        if volume is None and c is not None:
-            volume = c * count
-            assumptions.append(f"{r['name']}: loyihada {fmt_num(p) if p is not None else '—'} m³, xulosada {fmt_num(c)} m³ — "
-                               f"xulosadagi qiymat olindi (4-ilova, 11-band: yig'im ekspertiza xulosasi bo'yicha hisoblanadi)")
+        if volume is None and p is not None and c is not None:
+            # the project is the primary source; the conclusion is what gets checked against it
+            volume = p
+            assumptions.append(f"{r['name']}: loyihada {fmt_num(p)} m³, xulosada {fmt_num(c)} m³ — loyihadagi qiymat olindi; "
+                               "ekspertiza xulosasi bu yerda loyihaga mos emas")
         if industrial:
             footprint, floors = _number(r["footprint"]), _number(r["floors"]) or Decimal(1)
             if footprint is not None:

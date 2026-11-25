@@ -32,7 +32,11 @@ if __name__ == "__main__":
     cert = os.environ.get("FEECALC_TLS_CERT")
     key = os.environ.get("FEECALC_TLS_KEY")
     local_password = os.environ.get("FEECALC_LOCAL_PASSWORD", password)
-    app = create_app(password=password, port_passwords={local_port: local_password} if host not in LOOPBACK else None)
+    # FEECALC_API_KEYS="billing:long-random-key,crm:another-key" - one key per integrating system
+    api_keys = {key: name for name, _, key in (item.partition(":") for item in os.environ.get("FEECALC_API_KEYS", "").split(",")) if key}
+    assert all(len(key) >= 24 for key in api_keys), "every key in FEECALC_API_KEYS must have 24+ characters"
+    app = create_app(password=password, port_passwords={local_port: local_password} if host not in LOOPBACK else None,
+                     api_keys=api_keys)
     if host in LOOPBACK:
         uvicorn.run(app, host=host, port=port, log_level="info")
     else:

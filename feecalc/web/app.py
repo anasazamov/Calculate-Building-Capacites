@@ -14,6 +14,7 @@ import re
 import secrets
 import threading
 import traceback
+from types import SimpleNamespace
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -29,6 +30,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import classify, contract, decide, extract, fee, ingest, llm, norms, pipeline, trace, verify, volumes
 from ..knowledge import KnowledgeBase
+from . import api
 from .store import Store, now
 
 HERE = Path(__file__).parent
@@ -98,6 +100,24 @@ def coverage(result: dict, plan_sheets: list[dict]) -> list[dict]:
     return out
 
 
+def expertise(view: dict) -> dict:
+    """Does the expertise conclusion agree with the project? Every figure that both documents state is compared."""
+    rows = [(r["label"], r, f"f-s{i}") for i, r in enumerate(view["scalar_rows"], 1)]
+    rows += [(f"{b['title']} — {r['label']}", r, f"f-b{bi}-{fi}") for bi, b in enumerate(view["buildings"], 1)
+             for fi, r in enumerate(b["fields"], 1)]
+    compared = [(label, r, anchor) for label, r, anchor in rows
+                if r["check"] and r["check"]["status"] in ("ok", "rounding", "mismatch")]
+    differing = [{"label": label, "project": (r["project"] or {}).get("value"), "conclusion": (r["conclusion"] or {}).get("value"),
+                  "detail": r["check"]["detail"], "anchor": anchor, "file": (r["conclusion"] or {}).get("file"),
+                  "page": (r["conclusion"] or {}).get("page"), "snippet": (r["conclusion"] or {}).get("source_text") or ""}
+                 for label, r, anchor in compared if r["check"]["status"] == "mismatch"]
+    only_conclusion = sum(1 for _l, r, _a in rows if r["conclusion"] and r["conclusion"].get("value") is not None
+                          and not (r["project"] and r["project"].get("value") is not None))
+    status = "not_run" if not view["has_project"] or not compared else ("mismatch" if differing else "ok")
+    return {"status": status, "compared": len(compared), "agree": len(compared) - len(differing), "differing": differing,
+            "only_in_conclusion": only_conclusion}
+
+
 def attention(view: dict) -> list[dict]:
     """What the reviewer should look at first: values that failed verification, documents or models that disagree.
 
@@ -149,13 +169,16 @@ def password_ok(header: str, password: str) -> bool:
 
 
 def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: str = "",
-               port_passwords: dict[int, str] | None = None) -> FastAPI:
+               port_passwords: dict[int, str] | None = None, api_keys: dict[str, str] | None = None) -> FastAPI:
     """`password` guards every listener; `port_passwords` overrides it for requests that arrived on a given port."""
-    app = FastAPI(title="Infratuzilma yig'imi", docs_url=None, redoc_url=None, openapi_url=None)
+    # The interactive docs page would load scripts from a CDN, so only the machine-readable schema is served.
+    app = FastAPI(title="Infratuzilma yig'imi", version="1", docs_url=None, redoc_url=None, openapi_url="/api/openapi.json")
     if password:
         @app.middleware("http")
         async def require_password(request: Request, call_next):  # type: ignore[no-untyped-def]
             expected = (port_passwords or {}).get(request.scope["server"][1], password)
+            if request.url.path.startswith("/api/"):  # the integration API checks its own keys
+                return await call_next(request)
             if password_ok(request.headers.get("authorization", ""), expected):
                 return await call_next(request)
             return Response("Parol kerak", status_code=401, headers={"WWW-Authenticate": 'Basic realm="feecalc"'})
@@ -312,6 +335,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         a["decisions"] = states
         a["all_confirmed"] = all(s["valid"] for s in states.values())
         a["attention"] = attention(a)
+        a["expertise"] = expertise(a)
         a["plans"] = plan_sheets(job)
         a["coverage"] = coverage(job["result"], a["plans"])
         a["norms"] = norms.check(a, description(job), knowledge)
@@ -388,6 +412,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                             "notes": view["volumes"][c]["notes"], "assumptions": view["volumes"][c]["auto"]["assumptions"],
                             "decision": view["decisions"][c]["decision"]} for c in volumes.VOLUME_CODES},
             "object": description(job), "recommendation": view["recommendation"], "norms": view["norms"],
+            "expertise": view["expertise"],
             "permitted_floors": job["permitted_floors"],
             "calc": calc, "fee": fee_data, "audit": store.audit_log(job["id"]),
         }
@@ -451,20 +476,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     async def create_job(request: Request, title: str = Form(""), conclusion: UploadFile = File(...),
                          project: list[UploadFile] = File(default_factory=list)) -> Response:
         user = require_staff(request)
-        # the project is optional: a conclusion alone can be read ("project not provided")
-        uploads = [("project", f) for f in project if f.filename] + [("conclusion", conclusion)]
-        for _role, f in uploads:
-            if not (f.filename or "").lower().endswith(".pdf"):
-                raise HTTPException(400, f"Faqat PDF qabul qilinadi: {f.filename!r}")
-        job_id = store.create_job(title.strip() or (conclusion.filename or "Nomsiz ish"), user)
-        folder = data_dir / "jobs" / str(job_id) / "files"
-        folder.mkdir(parents=True, exist_ok=True)
-        for i, (role, f) in enumerate(uploads):
-            safe = re.sub(r"[^\w.\-]+", "_", Path(f.filename or "file.pdf").name)
-            path = folder / f"{i + 1:02d}_{role}_{safe}"
-            path.write_bytes(await f.read())
-            store.add_file(job_id, role, f.filename or safe, path)
-        jobs.put(job_id)
+        job_id = await new_job(title, user, conclusion, project)
         return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -644,6 +656,10 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         return compute_fee(build_view(job), calc, proposed=bool(proposed))
 
     def finish(job_id: int, user: str, calc: dict, contract_number: str = "", contract_date: str = "") -> Response:
+        finalize_job(job_id, user, calc, contract_number, contract_date)
+        return flash(RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303), "Ish yakunlandi")
+
+    def finalize_job(job_id: int, user: str, calc: dict, contract_number: str = "", contract_date: str = "") -> dict:
         """Freeze the job: the sheet (and the contract documents made from it) never change afterwards."""
         job = get_job(job_id, need_result=True, editable=True)
         view = build_view(job)
@@ -657,7 +673,42 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         sheet["finalized"] = {"by": user, "at": now()}
         sheet["contract"] = {"number": contract_number.strip()[:60], "date": contract_date.strip()[:20] or now()[:10]}
         store.set_job(job_id, final=sheet, status="finalized", finalized_at=sheet["finalized"]["at"])
-        return flash(RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303), "Ish yakunlandi")
+        return sheet
+
+    def approve_job(job_id: int, user: str, calc: dict, contract_number: str = "", contract_date: str = "") -> dict:
+        """Accept the recommendation for every volume nobody decided otherwise, then finalize."""
+        job = get_job(job_id, need_result=True, editable=True)
+        save_calc(job_id, calc, build_view(job)["recommendation"])
+        view = build_view(get_job(job_id))  # the object type just chosen changes how Hb is counted
+        pending = [c for c in volumes.VOLUME_CODES if not view["decisions"][c]["valid"]]
+        without = [c for c in pending if view["volumes"][c]["auto"]["value"] is None]
+        if without:
+            raise HTTPException(409, "Tizim bu hajmlar uchun taklif bera olmadi: " + ", ".join(without)
+                                + " — qiymatini kiriting")
+        for code in pending:
+            auto = view["volumes"][code]["auto"]
+            store.set_decision(job_id, code, "confirmed", auto["value"], auto["value"], "", user)
+            store.audit(job_id, user, "volume_confirmed", target=code, new=auto["value"],
+                        reason="tizim tavsiyasi tasdiqlandi" + (": " + "; ".join(auto["assumptions"]) if auto["assumptions"] else ""))
+        return finalize_job(job_id, user, calc, contract_number, contract_date)
+
+    async def new_job(title: str, user: str, conclusion: UploadFile, project: list[UploadFile],
+                      client: str | None = None, external_id: str | None = None) -> int:
+        """Store the uploaded PDFs and queue the job. The project is optional: a conclusion alone can be read."""
+        uploads = [("project", f) for f in project if f.filename] + [("conclusion", conclusion)]
+        for _role, f in uploads:
+            if not (f.filename or "").lower().endswith(".pdf"):
+                raise HTTPException(400, f"Faqat PDF qabul qilinadi: {f.filename!r}")
+        job_id = store.create_job(title.strip() or (conclusion.filename or "Nomsiz ish"), user, client, external_id)
+        folder = data_dir / "jobs" / str(job_id) / "files"
+        folder.mkdir(parents=True, exist_ok=True)
+        for i, (role, f) in enumerate(uploads):
+            safe = re.sub(r"[^\w.\-]+", "_", Path(f.filename or "file.pdf").name)
+            path = folder / f"{i + 1:02d}_{role}_{safe}"
+            path.write_bytes(await f.read())
+            store.add_file(job_id, role, f.filename or safe, path)
+        jobs.put(job_id)
+        return job_id
 
     @app.get("/jobs/{job_id}/proposal", response_class=HTMLResponse)
     def proposal_page(request: Request, job_id: int) -> Response:
@@ -687,21 +738,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                 contract_number: str = Form(""), contract_date: str = Form("")) -> Response:
         """One step for the person: accept the recommendation for every volume nobody decided otherwise, then finalize."""
         user = require_staff(request)
-        job = get_job(job_id, need_result=True, editable=True)
-        calc = read_calc(kt, ko, kz, kz_value, kj, k_council, bhm)
-        save_calc(job_id, calc, build_view(job)["recommendation"])
-        view = build_view(get_job(job_id))  # the object type just chosen changes how Hb is counted
-        pending = [c for c in volumes.VOLUME_CODES if not view["decisions"][c]["valid"]]
-        without = [c for c in pending if view["volumes"][c]["auto"]["value"] is None]
-        if without:
-            raise HTTPException(409, "Tizim bu hajmlar uchun taklif bera olmadi: " + ", ".join(without)
-                                + " — batafsil tekshirish sahifasida qiymatini kiriting")
-        for code in pending:
-            auto = view["volumes"][code]["auto"]
-            store.set_decision(job_id, code, "confirmed", auto["value"], auto["value"], "", user)
-            store.audit(job_id, user, "volume_confirmed", target=code, new=auto["value"],
-                        reason="tizim tavsiyasi tasdiqlandi" + (": " + "; ".join(auto["assumptions"]) if auto["assumptions"] else ""))
-        return finish(job_id, user, calc, contract_number, contract_date)
+        approve_job(job_id, user, read_calc(kt, ko, kz, kz_value, kj, k_council, bhm), contract_number, contract_date)
+        return flash(RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303), "Ish yakunlandi")
 
     @app.post("/jobs/{job_id}/finalize")
     def finalize(request: Request, job_id: int, kt: str = Form(""), ko: str = Form(""), kz: str = Form(""),
@@ -858,4 +896,9 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         store.set_reference("setting", "contract_template", template.filename or "shablon.docx", "shartnoma shabloni", user)
         return reference_saved("Shartnoma shabloni saqlandi")
 
+    api.register(app, SimpleNamespace(
+        keys=api_keys or {}, store=store, data_dir=data_dir, get_job=get_job, job_state=job_state, build_view=build_view,
+        calc_inputs=calc_inputs, compute_fee=compute_fee, approve_job=approve_job, new_job=new_job,
+        decimal_field=decimal_field, reason_field=reason_field, final_sheet=final_sheet, contract_template=contract_template,
+        find_page=find_page, load_reference=load_reference, knowledge=knowledge, settlement_key=settlement_key))
     return app

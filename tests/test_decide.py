@@ -96,11 +96,11 @@ def test_hb_keeps_the_strict_proposal_when_there_is_one():
     assert out == {"value": "100", "formula": "strict", "assumptions": [], "strict": True}
 
 
-def test_hb_prefers_the_conclusion_when_documents_disagree():
+def test_hb_follows_the_project_when_the_conclusion_disagrees():
     rows = [hb_row("Uy", "1000"), hb_row("Hojatxona", None, project=number("251.37"), conclusion=number("10.2"))]
     out = decide.decide_hb(view_with(rows, None), industrial=False)
-    assert out["value"] == "1010.2" and not out["strict"]
-    assert "xulosadagi qiymat olindi" in out["assumptions"][0] and "11-band" in out["assumptions"][0]
+    assert out["value"] == "1251.37" and not out["strict"]
+    assert "loyihadagi qiymat olindi" in out["assumptions"][0] and "loyihaga mos emas" in out["assumptions"][0]
 
 
 def test_hb_of_an_industrial_object_counts_three_metres_per_storey():

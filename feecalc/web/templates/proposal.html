@@ -4,7 +4,7 @@
 {% block steps %}{{ jobbar(job, 'approve', 'proposal') }}{% endblock %}
 {% block content %}
 <h1>Tizim tavsiyasi</h1>
-<p class="lead">Tizim hujjatlarni o'qib, hajmlar va koeffitsiyentlarni o'zi taklif qildi va har birining asosini yozdi. Ko'rib chiqing: to'g'ri bo'lsa — tasdiqlang. Biror narsa noto'g'ri bo'lsa, yuqoridagi «Batafsil tekshirish» yoki «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
+<p class="lead">Tizim loyihani asosiy manba sifatida o'qib, ekspertiza xulosasini unga solishtirdi, hajmlar va koeffitsiyentlarni taklif qildi va har birining asosini yozdi. Ko'rib chiqing: to'g'ri bo'lsa — tasdiqlang. Biror narsa noto'g'ri bo'lsa, yuqoridagi «Batafsil tekshirish» yoki «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
 
 {% for e in rec.exemptions %}<div class="callout bad"><b>Istisno bo'lishi mumkin.</b> {{ e.text }}</div>{% endfor %}
 {% if rec.open %}
@@ -12,6 +12,15 @@
   <ul>{% for o in rec.open %}{% if o.scope | lower not in calc or not calc[o.scope | lower] %}<li><b>{{ o.scope }}</b>: {{ o.text }}</li>{% endif %}{% endfor %}</ul>
 </div>
 {% endif %}
+
+{% set x = view.expertise %}
+<div class="callout {{ {'ok': 'ok', 'mismatch': 'bad', 'not_run': 'warn'}[x.status] }}" id="expertise">
+  <b>Ekspertiza xulosasini tekshirish.</b>
+  {% if x.status == 'not_run' %}{{ "Loyiha berilmagan — xulosani loyiha bilan solishtirib bo'lmadi; tavsiya faqat xulosaga tayanadi." if not view.has_project else "Loyiha va xulosada birga yozilgan ko'rsatkich topilmadi — solishtirib bo'lmadi." }}
+  {% else %}Loyiha va xulosada birga yozilgan {{ x.compared }} ta ko'rsatkich solishtirildi: {{ x.agree }} tasi mos{% if x.differing %}, <b>{{ x.differing | length }} tasida xulosa loyihaga mos emas</b>{% endif %}.
+  {% if x.only_in_conclusion %}Yana {{ x.only_in_conclusion }} ta ko'rsatkich faqat xulosada bor (loyihadan o'qilmagan).{% endif %}{% endif %}
+  {% if x.differing %}<ul>{% for d in x.differing %}<li><b>{{ d.label }}</b>: loyihada «{{ d.project }}», xulosada «{{ d.conclusion }}» <a href="/jobs/{{ job.id }}/review#{{ d.anchor }}">ko'rish</a></li>{% endfor %}</ul>{% endif %}
+</div>
 
 <form method="post" action="/jobs/{{ job.id }}/approve" class="calc" id="approve"
       data-confirm-title="Tavsiyani tasdiqlaysizmi?" data-confirm-ok="Ha, tasdiqlash"

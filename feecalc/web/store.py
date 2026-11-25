@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS job (
     finalized_at TEXT,
     requests_total INTEGER,          -- reading requests planned for this job
     requests_done INTEGER,           -- reading requests finished so far
-    started_at TEXT                  -- when the worker started (or restarted) reading
+    started_at TEXT,                 -- when the worker started (or restarted) reading
+    client TEXT,                     -- integration client that created the job through the API (NULL: the web UI)
+    external_id TEXT                 -- the client's own identifier of this job (idempotent creation)
 );
 CREATE TABLE IF NOT EXISTS file (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +86,8 @@ CREATE TABLE IF NOT EXISTS audit (
 """
 
 # Columns added after the first release: (table, column, type). Applied to databases created before them.
-MIGRATIONS = (("job", "requests_total", "INTEGER"), ("job", "requests_done", "INTEGER"), ("job", "started_at", "TEXT"))
+MIGRATIONS = (("job", "requests_total", "INTEGER"), ("job", "requests_done", "INTEGER"), ("job", "started_at", "TEXT"),
+              ("job", "client", "TEXT"), ("job", "external_id", "TEXT"))
 
 
 def now() -> str:
@@ -111,13 +114,19 @@ class Store:
         c.close()
 
     # ----- jobs -----
-    def create_job(self, title: str, user: str) -> int:
+    def create_job(self, title: str, user: str, client: str | None = None, external_id: str | None = None) -> int:
         with self.connect() as c:
-            cur = c.execute("INSERT INTO job (title, created, created_by, status) VALUES (?, ?, ?, 'queued')",
-                            (title, now(), user))
+            cur = c.execute("INSERT INTO job (title, created, created_by, status, client, external_id) "
+                            "VALUES (?, ?, ?, 'queued', ?, ?)", (title, now(), user, client, external_id))
             job_id = int(cur.lastrowid or 0)
         self.audit(job_id, user, "job_created", new=title)
         return job_id
+
+    def job_by_external(self, client: str, external_id: str) -> int | None:
+        with self.connect() as c:
+            row = c.execute("SELECT id FROM job WHERE client = ? AND external_id = ? ORDER BY id LIMIT 1",
+                            (client, external_id)).fetchone()
+        return None if row is None else int(row["id"])
 
     def add_file(self, job_id: int, role: str, name: str, path: Path) -> None:
         with self.connect() as c:
@@ -136,7 +145,7 @@ class Store:
 
     def jobs(self) -> list[dict]:
         with self.connect() as c:
-            rows = c.execute("SELECT id, title, created, created_by, status, stage, final, finalized_at "
+            rows = c.execute("SELECT id, title, created, created_by, status, stage, final, finalized_at, client, external_id "
                              "FROM job ORDER BY id DESC").fetchall()
         out = []
         for row in rows:

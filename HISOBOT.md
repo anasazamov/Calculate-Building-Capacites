@@ -153,6 +153,19 @@ hujjatda bor va tekshiruvdan o'tgan, ammo binolar soni e'tiborga olinmagani uchu
 tekshiruvi bunday xatoni ushlamaydi — uni asosiy tizimdagi kod qoidalari (soni × birlik, loyiha bilan
 solishtirish) ushlaydi. Shu sababli agent rejimi asosiy yo'l sifatida tavsiya qilinmaydi.
 
+### Integratsiya API'si va «loyiha — asosiy manba» (25.11.2026)
+
+- Tizim boshqa tizimning quyi tizimi sifatida ishlashi uchun `/api/v1` qo'shildi (`docs/API.md`): ish yaratish,
+  holatni so'rash, tavsiya, qiymatlar va manbalari, hajmni o'zgartirish, tasdiqlash, varaqa va Word hujjatlari,
+  ma'lumotnoma. Har integratsiya tizimiga alohida kalit (`X-API-Key`); kalit nomi audit jurnaliga yoziladi.
+  Tizim tashqariga so'rov yubormaydi (webhook yo'q) — holat so'rab olinadi.
+- Buyurtmachi talabi bilan ustuvorlik o'zgardi: asosiy manba — loyiha, ekspertiza xulosasi unga solishtirib
+  tekshiriladi. Loyiha va xulosa hajmi farq qilsa endi loyihadagi qiymat olinadi va «xulosa loyihaga mos emas»
+  deb yoziladi (avval 4-ilova 11-bandiga tayanib xulosa olinardi — bu huquqiy savol ochiq). Tavsiya sahifasi
+  «Ekspertiza xulosasini tekshirish» natijasi bilan boshlanadi: nechta ko'rsatkich solishtirilgani va farqlar.
+  Cheklov: xulosa hamon majburiy; loyihasiz ishda xulosani tekshirib bo'lmaydi; loyihadan faqat tizim o'qiydigan
+  ko'rsatkichlar solishtiriladi.
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi
