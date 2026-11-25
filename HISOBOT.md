@@ -191,6 +191,23 @@ Cheklov: usul bitta haqiqiy ishda tekshirildi; reja sarlavhalari boshqacha yozil
 va maydon — foydalanish maydoni; u chegirilmaydi. Model taxmini ko'rsatiladi, lekin qo'llanmaydi va xodimdan
 tasdiq so'ralmaydi (`volumes.build_components`).
 
+### Mahalliy model nega mulohazada adashadi (25.11.2026, o'lchandi)
+
+Haqiqiy edge case'lardan olingan 10 ta qisqa savol (sig'im inshootimi yoki bino; xona toifasi; reja varag'i qamragan
+qavatlar; binolar soni × hajm; Ht hisobi), har biri bir martadan, ikkala model:
+
+| Sharoit | Qwen | Gemma | Vaqt (10 savol) |
+|---|---|---|---|
+| Faqat javob, thinking o'chiq (pipeline sozlamasi) | 6/10 | 6/10 | 5 s |
+| Avval qisqa mulohaza, keyin javob (JSON ichida) | 8/10 | 8/10 | 30–40 s |
+| Thinking yoqiq | 7/10 (JSON buzildi) | 9/10 | 100–250 s |
+
+Faqat-javob rejimidagi xatolar: ikkala arifmetik savol noto'g'ri (masalan 80,52 o'rniga 80,82) va toifa ta'rifi
+berilmagan xona savollari. Toifa ta'riflari va «aniq aytib bo'lmaydi» varianti savolning o'ziga yozilganda xona
+savollarining hammasi to'g'ri chiqdi (ikkala model, 4/4, faqat-javob rejimida ham). Xulosa: sabab bilim yetishmasligi
+emas — (1) modelga hisoblash uchun joy berilmagan, (2) qoidalar va ta'riflar savolda yo'q, (3) «bilmayman» deyish
+imkoni berilmagan. Namuna kichik (10 savol, bir martadan).
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi
