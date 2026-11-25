@@ -1,8 +1,8 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T12:32:33",
- "duration_s": 2.281,
+ "time": "2026-11-25T12:55:40",
+ "duration_s": 2.049,
  "prompt_hash": "f3acb53b6d0f519399c28b79bf77c2755c9bc7ebe8c24fa4016ea2df95a52342",
  "request": {
   "model": "qwen3.8-27b",
@@ -68,16 +68,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-a8f41a357ca3d010",
+  "id": "chatcmpl-a1c1eae6196637c6",
   "object": "chat.completion",
-  "created": 1795609951,
+  "created": 1795611338,
   "model": "qwen3.8-27b",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"reason\": \"Matnda 'План на отм. 0.000' (0.000 belgisidagi reja) yozilgan, bu odatda birinchi qavat yoki yer sirtidagi asosiy reja uchun ishlatiladi, shuning uchun bu qavatlar rejasi hisoblanadi.\", \"answer\": \"qavatlar\", \"first\": 1, \"last\": 1}",
+     "content": "{\"reason\": \"Matnda 'План на отм. 0.000' (0.000 belgisidagi reja) yozilgan, bu odatda birinchi qavat yoki yer sirtidagi asosiy reja bo'lib, qavat rejalariga kiradi.\", \"answer\": \"qavatlar\", \"first\": 1, \"last\": 1}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -95,8 +95,8 @@
   "system_fingerprint": "vllm-0.34.0-1c19d697",
   "usage": {
    "prompt_tokens": 400,
-   "total_tokens": 501,
-   "completion_tokens": 101,
+   "total_tokens": 491,
+   "completion_tokens": 91,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

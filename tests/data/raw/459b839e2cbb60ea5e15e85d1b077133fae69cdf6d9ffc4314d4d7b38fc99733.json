@@ -1,8 +1,8 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T12:32:31",
- "duration_s": 1.528,
+ "time": "2026-11-25T12:55:38",
+ "duration_s": 1.345,
  "prompt_hash": "26f1006e89a6b6a9f042bd71669764ff10df0c440297a53b772df4e0925fc99b",
  "request": {
   "model": "qwen3.8-27b",
@@ -57,16 +57,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-954c82c8f5c57754",
+  "id": "chatcmpl-95784eb760d5980b",
   "object": "chat.completion",
-  "created": 1795609949,
+  "created": 1795611337,
   "model": "qwen3.8-27b",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"reason\": \"Диспетчерская — это помещение для персонала, осуществляющего управление и контроль, которое не является техническим (Ht), общим для жильцов (Hu) или парковочным (Ha). Следовательно, оно относится к категории 'boshqa'.\", \"answer\": \"boshqa\"}",
+     "content": "{\"reason\": \"Диспетчерская (dispatcher's room) is a functional room for monitoring and control, typically classified as an auxiliary or office space within a building, not a parking, technical utility room, or common area for residents.\", \"answer\": \"boshqa\"}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -84,8 +84,8 @@
   "system_fingerprint": "vllm-0.34.0-1c19d697",
   "usage": {
    "prompt_tokens": 412,
-   "total_tokens": 478,
-   "completion_tokens": 66,
+   "total_tokens": 470,
+   "completion_tokens": 58,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

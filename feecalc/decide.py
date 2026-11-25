@@ -228,9 +228,9 @@ def decide_hb(view: dict, industrial: bool) -> dict:
     if not view["hb_rows"]:
         return _volume(None, "", ["Hujjatlardan bino o'qilmadi — Hb ni kiriting"], False)
     # A pit, a reservoir or a tank is listed with its capacity in m3; that is not a building volume.
-    judged = view.get("judged_structures") or {}
-    tanks = [r for r in rows if (_TANK.search(_plain(str(r["name"]))) or judged.get(r["name"]) == "inshoot")
-             and not (r.get("override") or {}).get("included")]
+    judged = view.get("judged_structures")
+    is_tank = (lambda r: judged.get(r["name"]) == "inshoot") if judged is not None else (lambda r: bool(_TANK.search(_plain(str(r["name"])))))
+    tanks = [r for r in rows if is_tank(r) and not (r.get("override") or {}).get("included")]
     rows = [r for r in rows if r not in tanks]
     if strict is not None and not industrial and not tanks:
         return _volume(Decimal(strict), view["volumes"]["Hb"]["formula"], [], True)
@@ -440,6 +440,18 @@ def recommend(view: dict, description: dict | None, reference: Reference, permit
     volumes = {"Hb": decide_hb(view, ko == "industrial"), "Hyu": decide_hyu(view, permitted_floors),
                "Ha": decide_category(view, "Ha", residential), "Ht": decide_category(view, "Ht", residential),
                "Hu": decide_category(view, "Hu", residential)}
+    # A free-standing technical building (heat point, boiler house, substation) is part of Hb and, by the formula's
+    # own wording ("technical floors, structures and rooms"), of Ht. Which rows are such is a judgment (judge.py).
+    judged = view.get("judged_structures") or {}
+    technical = [r for r in view["hb_rows"] if r["included"] and r["volume"] is not None and judged.get(r["name"]) == "texnik"]
+    if technical and volumes["Ht"]["value"] is not None:
+        extra = sum((Decimal(r["volume"]) for r in technical), Decimal(0))
+        ht = volumes["Ht"]
+        total = Decimal(ht["value"]) + extra
+        volumes["Ht"] = _volume(total, (ht["formula"] + " + " if ht["formula"] not in ("", "0") else "")
+                                + " + ".join(fmt_num(Decimal(r["volume"])) for r in technical) + f" = {fmt_num(total)} m³",
+                                ht["assumptions"] + [f"{r['name']}: alohida texnik bino (modellar xulosasi) — hajmi {fmt_num(Decimal(r['volume']))} m³ "
+                                                     "Ht ga qo'shildi (Hb tarkibida ham bor)" for r in technical], False)
     assumptions = [{"scope": code, "text": text} for code in VOLUME_CODES for text in volumes[code]["assumptions"]
                    if volumes[code]["value"] is not None]
     assumptions += [{"scope": group.capitalize(), "text": d["basis"]} for group, d in coefficients.items() if d["assumed"]]

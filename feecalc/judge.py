@@ -24,11 +24,15 @@ MAX_ITEMS = 120          # per question kind; a longer list is cut and the cut i
 UNSURE = "aniq_emas"
 
 STRUCTURE_SYSTEM = """Siz qurilish hajmini hisoblovchi mutaxassissiz. Obyekt binolari ro'yxatidan bitta qator beriladi.
-Savol: bu qator BINO mi (xonalari bor, odam kiradigan qurilish hajmi: uy, do'kon, ombor, hojatxona binosi, issiqlik punkti binosi, ayvon) yoki
-SIG'IM INSHOOTI mi (yozilgan m3 uning sig'imi: handak, septik, suv havzasi, rezervuar, quduq, o'ra, idish)?
-Qoida: sig'im inshootining m3 qiymati bino hajmi emas va yig'imga kirmaydi. Nomdan aniq bilib bo'lmasa — "aniq_emas".
-Avval bir-ikki jumla mulohaza, keyin javob. Faqat JSON: {"reason": "<mulohaza>", "answer": "bino" | "inshoot" | "aniq_emas"}"""
-STRUCTURE_ANSWERS = ("bino", "inshoot", UNSURE)
+Savol: bu qator qaysi turga kiradi?
+- "bino" — odamlar foydalanadigan oddiy bino: uy, kottej, do'kon, ofis, ombor, hojatxona binosi, ayvon, yotoqxona;
+- "texnik" — alohida turgan TEXNIK bino yoki inshoot, ya'ni faqat muhandislik jihozlari uchun: issiqlik punkti, qozonxona,
+  transformator podstansiyasi, nasos stansiyasi, generator xonasi, ventilyatsiya kamerasi binosi;
+- "inshoot" — SIG'IM inshooti, yozilgan m3 uning sig'imi: handak, septik, suv havzasi, rezervuar, quduq, o'ra, idish.
+Qoidalar (yig'im formulasi): sig'im inshootining m3 qiymati bino hajmi emas va hisobga kirmaydi; texnik bino hajmi binoning umumiy
+hajmiga kiradi va "texnik qavatlar, inshootlar va xonalar hajmi" (Ht) sifatida chegiriladi. Nomdan aniq bilib bo'lmasa — "aniq_emas".
+Avval bir-ikki jumla mulohaza, keyin javob. Faqat JSON: {"reason": "<mulohaza>", "answer": "bino" | "texnik" | "inshoot" | "aniq_emas"}"""
+STRUCTURE_ANSWERS = ("bino", "texnik", "inshoot", UNSURE)
 
 ROOM_SYSTEM = """Siz qurilish hajmini hisoblovchi mutaxassissiz. Bino xonalari jadvalidan bitta nom beriladi (o'zbek yoki rus tilida).
 Toifalar:

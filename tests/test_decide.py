@@ -230,3 +230,18 @@ def test_tanks_and_pits_are_not_building_volume():
     assert sum("sig'im inshooti" in a for a in out["assumptions"]) == 2
     kept = decide.decide_hb(view_with([{**rows[2], "override": {"included": True}}, rows[0]], "19832.65"), industrial=False)
     assert kept["value"] == "19832.65"                              # staff put the pit back: their decision stands
+
+
+def test_a_free_standing_technical_building_goes_into_ht():
+    rows = [hb_row("Kottej", "19822.65"), hb_row("Issiqlik punkti binosi", "140"), hb_row("Suv havzasi 100 m3", "100")]
+    view = {"hb_rows": rows, "components": [], "heights": [], "buildings": [], "scalar_rows": [],
+            "judged_structures": {"Kottej": "bino", "Issiqlik punkti binosi": "texnik", "Suv havzasi 100 m3": "inshoot"},
+            "volumes": {"Hb": {"proposal": "20062.65", "formula": "f"}, "Hyu": {"proposal": "0", "formula": "0", "notes": []},
+                        "Ha": {"proposal": "0", "formula": "0", "notes": []}, "Ht": {"proposal": "0", "formula": "0", "notes": []},
+                        "Hu": {"proposal": "0", "formula": "0", "notes": []}}}
+    rec = decide.recommend(view, value("yakka tartibdagi turar-joy (kottedj) qurilishi"), decide.Reference(), None)
+    assert rec["volumes"]["Hb"]["value"] == "19962.65"                 # the reservoir is out, the heat point stays in
+    assert rec["volumes"]["Ht"]["value"] == "140" and "texnik bino" in rec["volumes"]["Ht"]["assumptions"][-1]
+    view["judged_structures"] = {}                                      # the models did not agree: nothing is assumed
+    plain = decide.recommend(view, None, decide.Reference(), None)
+    assert plain["volumes"]["Ht"]["value"] == "0" and plain["volumes"]["Hb"]["value"] == "20062.65"

@@ -98,6 +98,8 @@
       {% endfor %}
       {% if not view.has_project %}<p class="flag">Loyiha berilmagan: tavsiya faqat xulosaga tayanadi.</p>{% endif %}
       {% if view.plans %}<p>Qavat rejalari: {{ view.plans | selectattr('rooms') | list | length }} ta varaqdan {{ view.plans | sum(attribute='count') }} ta xona yozuvi koordinata orqali o'qildi. <a href="/jobs/{{ job.id }}/review#plans">Ko'rish</a></p>{% endif %}
+      <form method="post" action="/jobs/{{ job.id }}/rejudge" style="margin-bottom:8px"><button type="submit" class="btn secondary small">Mulohaza bosqichini qayta bajarish</button>
+        <span class="hint">hujjat qayta o'qilmaydi; bino/inshoot, xona toifalari va reja qavatlari qayta so'raladi (1 daqiqagacha)</span></form>
       <p class="hint" style="margin:0">Jadvalli varaqlar va xulosani model o'qiydi; qavat rejalaridagi xona yozuvlari va kesimdagi sath belgilari matn qatlamidan kod bilan o'qiladi. Fasad va boshqa chizmalar o'qilmaydi.</p>
     </div>
 

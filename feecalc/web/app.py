@@ -56,7 +56,7 @@ AUDIT_LABELS = {
     "job_created": "ish yaratildi", "job_retried": "o'qish qayta boshlandi", "volume_confirmed": "hajm tasdiqlandi",
     "volume_changed": "hajm o'zgartirildi", "component_changed": "tarkib qatori o'zgartirildi",
     "permitted_floors_set": "ruxsat etilgan qavatlar soni kiritildi", "building_matched": "binolar juftlandi",
-    "finalized": "ish yakunlandi", "reopened": "ish qayta ochildi",
+    "finalized": "ish yakunlandi", "reopened": "ish qayta ochildi", "rejudged": "mulohaza bosqichi qayta bajarildi",
 }
 ERROR_TITLES = {404: "Sahifa topilmadi", 409: "Bu amalni hozir bajarib bo'lmaydi"}
 GROUPS = ("kt", "ko", "kz", "kj")
@@ -216,12 +216,19 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             lambda done, total: store.set_job(job_id, requests_done=done, requests_total=total))
         store.set_job(job_id, status="ready", stage="done", result=result)
 
+    def judge_again(job_id: int) -> None:
+        job = store.job(job_id)
+        assert job and job["result"], job_id
+        store.set_job(job_id, status="running", stage="categories", error="", started_at=now(), requests_total=None, requests_done=None)
+        store.set_job(job_id, status="ready", stage="done", result=pipeline.rejudge(job["result"], data_dir / "jobs" / str(job_id)))
+
     def run_job(job_id: int) -> None:
         # Job boundary: the only place where an exception is caught. The full error (type, file and
         # line, message, stage) is stored and shown; this job stops, the worker moves on.
         try:
-            process(job_id)
+            judge_again(-job_id) if job_id < 0 else process(job_id)  # a negative id asks for the judgment stage only
         except Exception:  # noqa: BLE001
+            job_id = abs(job_id)
             job = store.job(job_id)
             stage = job["stage"] if job else "?"
             store.set_job(job_id, status="failed", error=f"Bosqich: {stage}\n\n{traceback.format_exc()}")
@@ -723,6 +730,16 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             store.add_file(job_id, role, f.filename or safe, path)
         jobs.put(job_id)
         return job_id
+
+    @app.post("/jobs/{job_id}/rejudge")
+    def rejudge(request: Request, job_id: int) -> Response:
+        """Ask the judgment questions again for a job that is already read (reading is not repeated)."""
+        user = require_staff(request)
+        job = get_job(job_id, need_result=True, editable=True)
+        store.audit(job_id, user, "rejudged")
+        store.set_job(job_id, status="queued", stage="")
+        jobs.put(-job["id"])
+        return flash(RedirectResponse(f"/jobs/{job_id}", status_code=303), "Mulohaza bosqichi qayta navbatga qo'yildi")
 
     @app.post("/jobs/{job_id}/reopen")
     def reopen(request: Request, job_id: int, reason: str = Form("")) -> Response:

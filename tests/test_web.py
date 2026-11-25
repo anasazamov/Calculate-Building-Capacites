@@ -442,3 +442,16 @@ def test_a_room_name_decided_once_applies_to_every_job(client: TestClient, sampl
         row = [c for c in view["components"] if c["name"] == name][0]
         assert (row["category"], row["category_method"], row["needs_confirmation"]) == ("Ht", "reference", False)
         assert pipeline.assess(result)["components"][view["components"].index(row)]["category"] == "other"
+
+
+def test_judgment_stage_can_be_run_again_without_reading(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    before = client.app.state.store.job(job)["result"]  # type: ignore[attr-defined]
+    assert set(before["judgments"]) >= {"structures", "rooms", "sheets"}
+    assert client.post(f"/jobs/{job}/rejudge").status_code == 303
+    assert client.get(f"/jobs/{job}/status").json()["status"] == "queued"
+    client.app.state.run_job(-job)  # type: ignore[attr-defined]
+    after = client.app.state.store.job(job)  # type: ignore[attr-defined]
+    assert after["status"] == "ready" and after["result"]["judgments"]["structures"] == before["judgments"]["structures"]
+    assert after["result"]["conclusion"] == before["conclusion"]                 # the reading itself is untouched

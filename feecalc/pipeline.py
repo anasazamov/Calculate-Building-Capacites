@@ -205,6 +205,31 @@ def read_plan_index(files: list[dict], judgments: dict | None = None) -> list[di
     return out
 
 
+def rejudge(result: dict, job_dir: Path) -> dict:
+    """Run the judgment stage again on a job that is already read (after the questions changed, or for a job read
+    before the stage existed). Reading is not repeated. Returns the result with fresh judgments and plan index."""
+    models = [m for m in (llm.model1(), llm.model2()) if m.key in result["models"] and llm.server_ready(m)]
+    if not models:
+        raise llm.ModelError("Mulohaza uchun model serveri tayyor emas")
+    project_files = []
+    for f in result["files"]:
+        if f["role"] == "project":
+            kinds = {p["number"]: classify.SheetType((p["sheet"] or {}).get("kind", "other"), "stored", False, "", False, False)
+                     for p in f["pages"]}
+            project_files.append((Path(f["path"]), ingest.ingest(Path(f["path"])), kinds))
+    unknown: list[str] = []
+    if result["project"]:
+        pm = result["project"]["model1"]
+        unknown = sorted(
+            {x["name"] for x in pm["area_breakdown"]
+             if volumes.needs_model_suggestion(x["name"], "breakdown", x["name"], x.get("level_mark"))}
+            | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
+    structures = [r["name"] for r in assess({**result, "judgments": {}})["hb_rows"]]
+    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), job_dir / "raw")
+    return {**result, "judgments": judgments, "plan_index": read_plan_index(result["files"], judgments),
+            "plans": result.get("plans") or read_plans(result["files"])}
+
+
 # ---------- the object as the conclusion describes it (pure code) ----------
 _OBJECT_LABEL = re.compile(r"^\s*(?:Obyekt(?:ning)?\s+nomi|Объект(?:нинг)?\s+номи|Наименование\s+объекта)\s*[:\-–]\s*", re.I)
 _NEXT_FIELD = re.compile(r"^\s*(?:\d+(?:\.\d+)+[.)]?\s|[^:]{2,45}:\s)")
@@ -540,8 +565,8 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
         "heights": [{"level": h.label, "kind": h.level.kind, "value": str(h.value), "origin": h.origin} for h in heights],
         "floors": None if floors is None else str(floors),
         "industrial": {"rows": industrial, "total": str(industrial_total)},
-        "judged_structures": {name: answer["answer"] for name, answers in judgments.get("structures", {}).items()
-                              for answer in [judge.agreed(answers)] if answer},
+        "judged_structures": ({name: answer["answer"] for name, answers in judgments["structures"].items()
+                               for answer in [judge.agreed(answers)] if answer} if "structures" in judgments else None),
         "project_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in p1["buildings"]],
         "conclusion_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in c1["buildings"]],
     }

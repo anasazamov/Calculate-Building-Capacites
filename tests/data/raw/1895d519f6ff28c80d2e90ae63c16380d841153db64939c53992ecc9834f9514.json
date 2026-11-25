@@ -1,19 +1,19 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T12:33:26",
- "duration_s": 1.401,
- "prompt_hash": "5790ef1fa83a0b0aed211b1ccb82935ae704abb3f322346ab401a6a7963cb901",
+ "time": "2026-11-25T12:56:33",
+ "duration_s": 1.516,
+ "prompt_hash": "a0a0627dc9e61ba3e91dde55e2aa2ac656d5c94bf432977a8403d6e5fbb719eb",
  "request": {
   "model": "qwen3.8-27b",
   "messages": [
    {
     "role": "system",
-    "content": "Siz qurilish hajmini hisoblovchi mutaxassissiz. Obyekt binolari ro'yxatidan bitta qator beriladi.\nSavol: bu qator BINO mi (xonalari bor, odam kiradigan qurilish hajmi: uy, do'kon, ombor, hojatxona binosi, issiqlik punkti binosi, ayvon) yoki\nSIG'IM INSHOOTI mi (yozilgan m3 uning sig'imi: handak, septik, suv havzasi, rezervuar, quduq, o'ra, idish)?\nQoida: sig'im inshootining m3 qiymati bino hajmi emas va yig'imga kirmaydi. Nomdan aniq bilib bo'lmasa — \"aniq_emas\".\nAvval bir-ikki jumla mulohaza, keyin javob. Faqat JSON: {\"reason\": \"<mulohaza>\", \"answer\": \"bino\" | \"inshoot\" | \"aniq_emas\"}"
+    "content": "Siz qurilish hajmini hisoblovchi mutaxassissiz. Obyekt binolari ro'yxatidan bitta qator beriladi.\nSavol: bu qator qaysi turga kiradi?\n- \"bino\" — odamlar foydalanadigan oddiy bino: uy, kottej, do'kon, ofis, ombor, hojatxona binosi, ayvon, yotoqxona;\n- \"texnik\" — alohida turgan TEXNIK bino yoki inshoot, ya'ni faqat muhandislik jihozlari uchun: issiqlik punkti, qozonxona,\n  transformator podstansiyasi, nasos stansiyasi, generator xonasi, ventilyatsiya kamerasi binosi;\n- \"inshoot\" — SIG'IM inshooti, yozilgan m3 uning sig'imi: handak, septik, suv havzasi, rezervuar, quduq, o'ra, idish.\nQoidalar (yig'im formulasi): sig'im inshootining m3 qiymati bino hajmi emas va hisobga kirmaydi; texnik bino hajmi binoning umumiy\nhajmiga kiradi va \"texnik qavatlar, inshootlar va xonalar hajmi\" (Ht) sifatida chegiriladi. Nomdan aniq bilib bo'lmasa — \"aniq_emas\".\nAvval bir-ikki jumla mulohaza, keyin javob. Faqat JSON: {\"reason\": \"<mulohaza>\", \"answer\": \"bino\" | \"texnik\" | \"inshoot\" | \"aniq_emas\"}"
    },
    {
     "role": "user",
-    "content": "Turar joy binosi — Tip-2"
+    "content": "Turar joy binosi — Tip-1"
    }
   ],
   "max_tokens": 600,
@@ -33,6 +33,7 @@
        "type": "string",
        "enum": [
         "bino",
+        "texnik",
         "inshoot",
         "aniq_emas"
        ]
@@ -55,16 +56,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-8910851cf99b6298",
+  "id": "chatcmpl-be9ce6b93336aa8f",
   "object": "chat.completion",
-  "created": 1795610004,
+  "created": 1795611392,
   "model": "qwen3.8-27b",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"reason\": \"Turar joy binosi odam yashaydigan, xonalari bo'lgan qurilish hajmi hisoblanadi va u bino toifasiga kiradi.\", \"answer\": \"bino\"}",
+     "content": "{\n\"reason\": \"Turar joy binosi odamlar yashashi uchun mo'ljallangan asosiy bino hisoblanadi, shuning uchun u 'bino' turiga kiradi.\",\n\"answer\": \"bino\"\n}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -81,9 +82,9 @@
   "service_tier": null,
   "system_fingerprint": "vllm-0.34.0-1c19d697",
   "usage": {
-   "prompt_tokens": 266,
-   "total_tokens": 319,
-   "completion_tokens": 53,
+   "prompt_tokens": 416,
+   "total_tokens": 475,
+   "completion_tokens": 59,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }
