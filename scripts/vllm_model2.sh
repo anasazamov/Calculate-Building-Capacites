@@ -9,5 +9,5 @@ exec "${VLLM_BIN:-/workspace/venvs/vllm/bin/vllm}" serve RedHatAI/gemma-4-31B-it
   --served-model-name gemma-4-31b-it \
   --host 127.0.0.1 --port 8002 \
   --reasoning-parser gemma4 \
-  --max-model-len "${MAX_LEN2:-32768}" --max-num-seqs 8 \
+  --max-model-len "${MAX_LEN2:-32768}" --max-num-seqs "${MAX_SEQS:-16}" \
   --gpu-memory-utilization "${GPU_FRAC2:-0.55}"

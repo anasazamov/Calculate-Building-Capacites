@@ -121,6 +121,7 @@ fractions to 0.90.
 | `FEECALC_TLS_CERT` / `FEECALC_TLS_KEY` | unset | TLS pair; required on a non-loopback address |
 | `FEECALC_LOCAL_PASSWORD` | same as `FEECALC_PASSWORD` | password asked on the loopback listener when `FEECALC_HOST` is public |
 | `FEECALC_LOCAL_PORT` | `8000` | plain-HTTP loopback listener kept for SSH tunnels when `FEECALC_HOST` is public |
+| `FEECALC_PARALLEL` | `12` | requests in flight per model; keep below the server's `MAX_SEQS` (default 16) |
 | `FEECALC_DEGENERATE_MARKER` | `logs/degenerate_marker.jsonl` | marker file watched by the watchdog |
 
 ## Tests and measurements

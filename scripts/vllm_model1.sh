@@ -9,5 +9,5 @@ exec "${VLLM_BIN:-/workspace/venvs/vllm/bin/vllm}" serve Qwen/Qwen3.8-27B-FP8 \
   --served-model-name qwen3.8-27b \
   --host 127.0.0.1 --port 8001 \
   --reasoning-parser qwen3 \
-  --max-model-len 32768 --max-num-seqs 8 \
+  --max-model-len 32768 --max-num-seqs "${MAX_SEQS:-16}" \
   --gpu-memory-utilization "${GPU_FRAC1:-0.40}"

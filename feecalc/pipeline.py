@@ -86,15 +86,22 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         with ThreadPoolExecutor(max_workers=len(models)) as pool:
             return dict(zip([m.key for m in models], pool.map(reader, models)))
 
-    start = time.monotonic()
-    progress("project")
-    project = read_all(lambda m: extract.read_project(m, project_files, raw_dir)) if project_files else {}
-    timing["project"] = time.monotonic() - start
+    def timed(name: str, reader: Callable[[llm.Model], dict]) -> dict[str, dict]:
+        start = time.monotonic()
+        out = read_all(reader)
+        timing[name] = time.monotonic() - start
+        return out
 
-    start = time.monotonic()
-    progress("conclusion")
-    conclusion = read_all(lambda m: extract.read_conclusion(m, conclusion_pages, raw_dir))
-    timing["conclusion"] = time.monotonic() - start
+    # The two documents are independent, so they are read at the same time (still in separate requests:
+    # no request ever contains text from both). The conclusion is one long generation that leaves the
+    # server mostly idle; the project's many short requests fill that idle capacity.
+    progress("project" if project_files else "conclusion")
+    with ThreadPoolExecutor(max_workers=2) as documents:
+        conclusion_job = documents.submit(timed, "conclusion",
+                                          lambda m: extract.read_conclusion(m, conclusion_pages, raw_dir))
+        project = timed("project", lambda m: extract.read_project(m, project_files, raw_dir)) if project_files else {}
+        progress("conclusion")
+        conclusion = conclusion_job.result()  # an error is raised here
 
     start = time.monotonic()
     progress("categories")

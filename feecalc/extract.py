@@ -8,6 +8,7 @@ Rules:
 """
 from __future__ import annotations
 
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -20,7 +21,8 @@ from .ingest import Page, group_lines, stamp_text, structured_text
 CHUNK_CHARS = 9000            # text limit for one project request
 CONCLUSION_CHARS = 36000      # a conclusion up to this size goes in one request
 MAX_CHUNKS_PER_PAGE = 8
-PARALLEL = 6                  # below the server's --max-num-seqs 8, so the watchdog canary always gets a slot
+# Requests in flight per model. Keep it below the server's --max-num-seqs so the watchdog canary gets a slot.
+PARALLEL = int(os.environ.get("FEECALC_PARALLEL", "12"))
 MAX_TOKENS = {"conclusion": 12000, "tep": 6144, "rooms": 6144, "sheet": 64, "category": 2048}
 PROMPT_VERSION = "2026-11-24.7"
 

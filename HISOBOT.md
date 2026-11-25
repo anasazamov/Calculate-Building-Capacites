@@ -292,6 +292,29 @@ Chiqish tokenlari shu juftlikda: Qwen 19 161, Gemma 13 150. Ikki model bitta kar
 uchun har biri yolg'iz ishlagandagidan sekinroq; ikki kartali serverda tezroq bo'lishi kerak
 (**taxmin**, o'lchanmagan).
 
+#### Tezlashtirish (25.11.2026, o'lchandi)
+
+Bitta juftlik (284459: 40 sahifali albom + 7 sahifali xulosa), ikkala model, keshsiz, har variant bir marta:
+
+| Variant | Devor vaqti |
+|---|---|
+| Avvalgi tartib: avval loyiha, keyin xulosa; modelga 6 ta parallel so'rov | 327 s |
+| Modellar navbat bilan (avval Qwen, keyin Gemma), 6 ta parallel | 300 s |
+| Server chegarasi 16, modelga 14 ta parallel, hujjatlar ketma-ket | 306 s |
+| Xuddi shu, modellar navbat bilan | 255 s |
+| **Yangi tartib: loyiha va xulosa bir vaqtda o'qiladi, 12 ta parallel, chegara 16** | **210 s** |
+
+- Sabab parallellik sonida emas edi: xulosa bitta uzun so'rov bilan o'qiladi (165–220 s) va shu paytda
+  server deyarli bo'sh turardi. Endi loyihaning qisqa so'rovlari shu bo'sh vaqtni to'ldiradi.
+- Ikki model bitta kartada bir-birini taxminan ikki baravar sekinlashtiradi (Qwen yolg'iz 128–158 s,
+  birga 278–327 s), lekin navbat bilan ishlatish jami vaqtni deyarli kamaytirmaydi.
+- Qolgan tor joy — xulosaning bitta uzun so'rovi (199 s). Xulosani bo'laklab o'qish tezlashtirar edi,
+  lekin u aniqlikni o'zgartirishi mumkin va barcha namunalarda qayta o'lchashni talab qiladi — qilinmadi.
+- Promptlar o'zgarmagan; "ikki hujjat bitta so'rovda ko'rinmaydi" qoidasi saqlangan. Aniqlik bu
+  o'zgarishdan keyin qayta o'lchanmagan.
+- Yangi standart qiymatlar: `--max-num-seqs 16` (`MAX_SEQS`), `FEECALC_PARALLEL=12`. Quyidagi 3.7 va
+  5-bo'limdagi `--max-num-seqs 8` yozuvlari 24.11.2026 dagi o'lchov sharoitini bildiradi.
+
 ### 3.7. Yuk sinovi (o'lchandi)
 
 Haqiqiy o'lchamdagi xulosa so'rovi (≈2 300 chiqish tokeni) 1, 8 va 16 parallel nusxada,
