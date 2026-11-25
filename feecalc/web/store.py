@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS volume_decision (
     time TEXT NOT NULL,
     PRIMARY KEY (job_id, code)
 );
+CREATE TABLE IF NOT EXISTS difference_review (
+    job_id INTEGER NOT NULL REFERENCES job(id),
+    key TEXT NOT NULL,               -- identifies the difference and both values (a new reading asks again)
+    user TEXT NOT NULL,
+    time TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (job_id, key)
+);
 CREATE TABLE IF NOT EXISTS reference (
     kind TEXT NOT NULL,              -- setting | zone | central_street
     key TEXT NOT NULL,               -- setting name | settlement | "settlement|street"
@@ -208,6 +216,21 @@ class Store:
                       "status = excluded.status, value = excluded.value, proposal = excluded.proposal, "
                       "reason = excluded.reason, user = excluded.user, time = excluded.time",
                       (job_id, code, status, value, proposal, reason, user, now()))
+
+    # ----- differences between project and conclusion that staff have looked at -----
+    def reviewed_differences(self, job_id: int) -> dict[str, dict]:
+        with self.connect() as c:
+            return {r["key"]: dict(r) for r in c.execute("SELECT * FROM difference_review WHERE job_id = ?", (job_id,))}
+
+    def review_difference(self, job_id: int, key: str, user: str, note: str) -> None:
+        with self.connect() as c:
+            c.execute("INSERT INTO difference_review (job_id, key, user, time, note) VALUES (?, ?, ?, ?, ?) "
+                      "ON CONFLICT (job_id, key) DO UPDATE SET user = excluded.user, time = excluded.time, note = excluded.note",
+                      (job_id, key, user, now(), note))
+
+    def unreview_difference(self, job_id: int, key: str) -> None:
+        with self.connect() as c:
+            c.execute("DELETE FROM difference_review WHERE job_id = ? AND key = ?", (job_id, key))
 
     # ----- reference data kept by staff (central streets, zones, BHM, council coefficient) -----
     def reference_rows(self) -> list[dict]:

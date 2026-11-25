@@ -4,7 +4,7 @@
 {% block steps %}{{ jobbar(job, 'approve', 'proposal') }}{% endblock %}
 {% block content %}
 <h1>Tizim tavsiyasi</h1>
-<p class="lead">Tizim loyihani asosiy manba sifatida o'qib, ekspertiza xulosasini unga solishtirdi, hajmlar va koeffitsiyentlarni taklif qildi va har birining asosini yozdi. Ko'rib chiqing: to'g'ri bo'lsa — tasdiqlang. Biror narsa noto'g'ri bo'lsa, yuqoridagi «Batafsil tekshirish» yoki «Koeffitsiyentlar va hisob» bo'limida o'zgartiring.</p>
+<p class="lead">Hisob loyiha bo'yicha; har qiymatning asosi yonida. To'g'ri bo'lsa — tasdiqlang.</p>
 
 {% for e in rec.exemptions %}<div class="callout bad"><b>Istisno bo'lishi mumkin.</b> {{ e.text }}</div>{% endfor %}
 {% if rec.open %}
@@ -13,14 +13,15 @@
 </div>
 {% endif %}
 
-{% set x = view.expertise %}
-<div class="callout {{ {'ok': 'ok', 'mismatch': 'bad', 'not_run': 'warn'}[x.status] }}" id="expertise">
-  <b>Ekspertiza xulosasini tekshirish.</b>
-  {% if x.status == 'not_run' %}{{ "Loyiha berilmagan — xulosani loyiha bilan solishtirib bo'lmadi; tavsiya faqat xulosaga tayanadi." if not view.has_project else "Loyiha va xulosada birga yozilgan ko'rsatkich topilmadi — solishtirib bo'lmadi." }}
-  {% else %}Loyiha va xulosada birga yozilgan {{ x.compared }} ta ko'rsatkich solishtirildi: {{ x.agree }} tasi mos{% if x.differing %}, <b>{{ x.differing | length }} tasida xulosa loyihaga mos emas</b>{% endif %}.
-  {% if x.only_in_conclusion %}Yana {{ x.only_in_conclusion }} ta ko'rsatkich faqat xulosada bor (loyihadan o'qilmagan).{% endif %}{% endif %}
-  {% if x.differing %}<ul>{% for d in x.differing %}<li><b>{{ d.label }}</b>: loyihada «{{ d.project }}», xulosada «{{ d.conclusion }}» <a href="/jobs/{{ job.id }}/review#{{ d.anchor }}">ko'rish</a></li>{% endfor %}</ul>{% endif %}
+{% set x = view.expertise %}{% set left = view.unreviewed | length %}
+{% if view.differences %}
+<div class="callout {{ 'bad' if left else 'ok' }}" id="expertise">
+  <b>Loyiha va xulosada {{ view.differences | length }} ta farq{{ ' — ' ~ left ~ ' tasi tekshirilmagan' if left else ' — hammasi tekshirilgan' }}.</b>
+  Hisob loyiha bo'yicha.{% if left %} Farqlar tekshirilmaguncha tasdiqlab bo'lmaydi.{% endif %}
+  <a class="btn {{ '' if left else 'secondary' }} small" href="/jobs/{{ job.id }}/review#differences" style="margin-left:8px">Farqlarni ko'rish</a>
 </div>
+{% elif x.status == 'ok' %}<div class="callout ok" id="expertise">Xulosa loyihaga mos: {{ x.compared }} ta ko'rsatkich solishtirildi.</div>
+{% elif not view.has_project %}<div class="callout warn" id="expertise">Loyiha berilmagan — xulosani tekshirib bo'lmadi.</div>{% endif %}
 
 <form method="post" action="/jobs/{{ job.id }}/approve" class="calc" id="approve"
       data-confirm-title="Tavsiyani tasdiqlaysizmi?" data-confirm-ok="Ha, tasdiqlash"
@@ -115,9 +116,9 @@
 
     {% if view.attention %}
     <div class="card">
-      <h2>Hujjatlardagi farqlar</h2>
-      <p>Hujjatlarni o'qishda {{ view.attention | length }} ta joyda farq yoki tasdiqlanmagan qiymat topildi. Ular tavsiyaga ta'sir qilgan bo'lsa, yuqoridagi asoslarda yozilgan.</p>
-      <a class="btn secondary" href="/jobs/{{ job.id }}/review#todo">Farqlarni ko'rish</a>
+      <h2>Boshqa e'tibor talab qiladigan joylar</h2>
+      <p>{{ view.attention | length }} ta: tasdiqlanmagan qiymat yoki ikki model turlicha o'qigan joy.</p>
+      <a class="btn secondary" href="/jobs/{{ job.id }}/review#todo">Ko'rish</a>
     </div>
     {% endif %}
   </div>
@@ -141,8 +142,8 @@
       <input id="contract_number" type="text" name="contract_number" maxlength="60" placeholder="masalan: ART-11-26-90" style="width:100%"></div>
     <div class="field"><label for="contract_date" style="color:#cfe0fa">Shartnoma sanasi</label>
       <input id="contract_date" type="text" name="contract_date" maxlength="20" value="{{ today }}" style="width:100%"></div>
-    <button type="submit" class="btn big" {% if not fee.result %}disabled{% endif %}>Tasdiqlash va shartnomani shakllantirish</button>
-    <p class="note">{% if fee.result %}{% if rec.assumptions %}Tizim {{ rec.assumptions | length }} ta taxmin qilgan — ular chap tomonda sariq bilan yozilgan. {% endif %}Tasdiqlangach ish o'zgartirilmaydi.{% else %}Yuqoridagi kamchilik bartaraf etilgach tasdiqlash mumkin bo'ladi.{% endif %}</p>
+    <button type="submit" class="btn big" {% if not fee.result or view.unreviewed %}disabled{% endif %}>Tasdiqlash va shartnomani shakllantirish</button>
+    <p class="note">{% if view.unreviewed %}Avval loyiha va xulosa farqlarini tekshiring.{% elif fee.result %}{% if rec.assumptions %}Tizim {{ rec.assumptions | length }} ta taxmin qilgan — ular chap tomonda sariq bilan yozilgan. {% endif %}Tasdiqlangach ish o'zgartirilmaydi.{% else %}Yuqoridagi kamchilik bartaraf etilgach tasdiqlash mumkin bo'ladi.{% endif %}</p>
   </aside>
 </form>
 {% endblock %}

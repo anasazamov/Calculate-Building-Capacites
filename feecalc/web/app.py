@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import base64
 import csv
+import difflib
+import hashlib
 import io
 import json
 import os
@@ -56,7 +58,8 @@ AUDIT_LABELS = {
     "job_created": "ish yaratildi", "job_retried": "o'qish qayta boshlandi", "volume_confirmed": "hajm tasdiqlandi",
     "volume_changed": "hajm o'zgartirildi", "component_changed": "tarkib qatori o'zgartirildi",
     "permitted_floors_set": "ruxsat etilgan qavatlar soni kiritildi", "building_matched": "binolar juftlandi",
-    "finalized": "ish yakunlandi", "reopened": "ish qayta ochildi", "rejudged": "mulohaza bosqichi qayta bajarildi",
+    "finalized": "ish yakunlandi", "reopened": "ish qayta ochildi", "difference_reviewed": "loyiha va xulosa farqi tekshirildi",
+    "difference_unreviewed": "farq belgisi olib tashlandi", "rejudged": "mulohaza bosqichi qayta bajarildi",
 }
 ERROR_TITLES = {404: "Sahifa topilmadi", 409: "Bu amalni hozir bajarib bo'lmaydi"}
 GROUPS = ("kt", "ko", "kz", "kj")
@@ -101,6 +104,65 @@ def coverage(result: dict, plan_sheets: list[dict]) -> list[dict]:
     return out
 
 
+def _num(v: dict | None) -> Decimal | None:
+    return Decimal(v["number"]) if v and v.get("status") == "accepted" and v.get("number") is not None else None
+
+
+def word_diff(a: str, b: str) -> tuple[list[tuple[str, bool]], list[tuple[str, bool]]]:
+    """Both texts as words, each marked True where it differs. Words are compared in Latin form, so the same
+    word written in Cyrillic and in Latin counts as equal."""
+    ta, tb = a.split(), b.split()
+    norm = lambda w: re.sub(r"[^a-z0-9]", "", verify.transliterate(w))  # noqa: E731
+    matcher = difflib.SequenceMatcher(None, [norm(w) for w in ta], [norm(w) for w in tb], autojunk=False)
+    left: list[tuple[str, bool]] = []
+    right: list[tuple[str, bool]] = []
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        left += [(w, op != "equal") for w in ta[i1:i2]]
+        right += [(w, op != "equal") for w in tb[j1:j2]]
+    return left, right
+
+
+def differences(view: dict, reviewed: dict[str, dict]) -> list[dict]:
+    """Every figure the project and the conclusion both state but state differently. The project is the basis
+    of the calculation; each difference goes to staff, who look at both sources and mark it checked."""
+    out: list[dict] = []
+
+    def add(label: str, pv: dict | None, cv: dict | None, anchor: str, conclusion_text: str | None = None,
+            conclusion_number: Decimal | None = None, field: str = "", where: str = "") -> None:
+        p_text = str((pv or {}).get("value") or "")
+        c_text = conclusion_text or str((cv or {}).get("value") or "")
+        p_num, c_num = _num(pv), conclusion_number if conclusion_number is not None else _num(cv)
+        key = hashlib.sha1(f"{label}|{p_text}|{c_text}".encode()).hexdigest()[:16]
+        item = {"key": key, "label": label, "field": field or label, "where": where, "anchor": anchor,
+                "project": p_text, "conclusion": c_text,
+                "project_source": pv, "conclusion_source": cv, "delta": None, "percent": None, "words": None,
+                "review": reviewed.get(key)}
+        if p_num is not None and c_num is not None:
+            item["delta"] = str(c_num - p_num)
+            item["percent"] = str(((c_num - p_num) / p_num * 100).quantize(Decimal("0.1"))) if p_num else None
+        else:
+            item["words"] = word_diff(p_text, c_text)
+        out.append(item)
+
+    for i, r in enumerate(view["scalar_rows"], 1):
+        if r["check"] and r["check"]["status"] == "mismatch":
+            add(r["label"], r["project"], r["conclusion"], f"f-s{i}")
+    for bi, b in enumerate(view["buildings"], 1):
+        for fi, r in enumerate(b["fields"], 1):
+            # a building's volume is compared once, in the Hb rows below (they know the number of identical buildings)
+            if r["field"] != "volume" and r["check"] and r["check"]["status"] == "mismatch":
+                add(f"{b['title']}: {r['label']}", r["project"], r["conclusion"], f"f-b{bi}-{fi}",
+                    field=r["label"], where=str(b["title"]).split(" / ")[0])
+    for r in view["hb_rows"]:
+        if r["check"]["status"] == "mismatch":
+            unit, count = _num(r["conclusion"]), Decimal(r["count"])
+            text = (f"{fee.fmt_num(count)} × {r['conclusion']['value']} = {fee.fmt_num(unit * count)}"
+                    if unit is not None and count > 1 else None)
+            add(f"Hajm: {r['name']}", r["project"], r["conclusion"], f"c-{r['id']}", text,
+                unit * count if unit is not None else None, field="Qurilish hajmi, m³", where=str(r["name"]))
+    return out
+
+
 def expertise(view: dict) -> dict:
     """Does the expertise conclusion agree with the project? Every figure that both documents state is compared."""
     rows = [(r["label"], r, f"f-s{i}") for i, r in enumerate(view["scalar_rows"], 1)]
@@ -142,8 +204,6 @@ def attention(view: dict) -> list[dict]:
                 add("unverified", f"{label}: {where} o'qilgan qiymat manba matni bilan tasdiqlanmadi", anchor, v)
         if r["check"]:
             row_checks.add(r["check"]["code"])
-            if r["check"]["status"] == "mismatch":
-                add("mismatch", f"{label}: loyiha va xulosada farq bor", anchor, r["conclusion"] or r["project"])
         for side, where in (("project", "loyihani"), ("conclusion", "xulosani")):
             if r[f"agreement_{side}"] == "mismatch":
                 add("mismatch", f"{label}: {where} ikki model turlicha o'qidi", anchor, r[side])
@@ -154,7 +214,7 @@ def attention(view: dict) -> list[dict]:
         for fi, r in enumerate(b["fields"], 1):
             row(f"{b['title']} — {r['label']}", r, f"f-b{bi}-{fi}")
     for c in view["checks"]:
-        if c["status"] in ("mismatch", "warning") and c["code"] not in row_checks:
+        if c["status"] in ("mismatch", "warning") and c["code"] not in row_checks and not c["code"].startswith("hb_row"):
             add(c["status"], c["name"], "checks")
     order = {"conflict": 0, "mismatch": 0, "unverified": 1, "warning": 2}
     return sorted(items, key=lambda x: order[x["kind"]])
@@ -357,6 +417,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         a["all_confirmed"] = all(s["valid"] for s in states.values())
         a["attention"] = attention(a)
         a["expertise"] = expertise(a)
+        a["differences"] = differences(a, store.reviewed_differences(job["id"]))
+        a["unreviewed"] = [d for d in a["differences"] if not d["review"]]
         a["plans"] = plan_sheets(job)
         a["coverage"] = coverage(job["result"], a["plans"])
         a["norms"] = norms.check(a, description(job), knowledge)
@@ -433,7 +495,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                             "notes": view["volumes"][c]["notes"], "assumptions": view["volumes"][c]["auto"]["assumptions"],
                             "decision": view["decisions"][c]["decision"]} for c in volumes.VOLUME_CODES},
             "object": description(job), "recommendation": view["recommendation"], "norms": view["norms"],
-            "expertise": view["expertise"],
+            "expertise": view["expertise"], "differences": view["differences"],
             "permitted_floors": job["permitted_floors"],
             "calc": calc, "fee": fee_data, "audit": store.audit_log(job["id"]),
         }
@@ -689,6 +751,9 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             raise HTTPException(409, "Tanlanmagan koeffitsiyentlar bor: " + ", ".join(g.capitalize() for g in fee_data["undecided"]))
         if fee_data["missing"]:
             raise HTTPException(409, "Tasdiqlanmagan hajmlar bor: " + ", ".join(fee_data["missing"]))
+        if view["unreviewed"]:
+            raise HTTPException(409, f"Loyiha va xulosa o'rtasidagi {len(view['unreviewed'])} ta farq tekshirilmagan: "
+                                + "; ".join(d["label"] for d in view["unreviewed"][:5]))
         store.audit(job_id, user, "finalized", new=fee_data["result"]["fee"], reason=json.dumps(calc, ensure_ascii=False))
         sheet = build_sheet(job, view, calc, fee_data)
         sheet["finalized"] = {"by": user, "at": now()}
@@ -730,6 +795,23 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             store.add_file(job_id, role, f.filename or safe, path)
         jobs.put(job_id)
         return job_id
+
+    @app.post("/jobs/{job_id}/difference/{key}")
+    def review_difference(request: Request, job_id: int, key: str, note: str = Form(""), undo: str = Form("")) -> Response:
+        """Staff have compared both sources of one difference (or take that back)."""
+        user = require_staff(request)
+        job = get_job(job_id, need_result=True, editable=True)
+        found = [d for d in build_view(job)["differences"] if d["key"] == key]
+        if not found:
+            raise HTTPException(404, "Bunday farq yo'q (hujjat qayta o'qilgan bo'lishi mumkin)")
+        if undo:
+            store.unreview_difference(job_id, key)
+            store.audit(job_id, user, "difference_unreviewed", target=found[0]["label"])
+            return back(job_id, f"d-{key}", "Belgi olib tashlandi")
+        store.review_difference(job_id, key, user, note.strip()[:300])
+        store.audit(job_id, user, "difference_reviewed", target=found[0]["label"],
+                    old=found[0]["conclusion"], new=found[0]["project"], reason=note.strip()[:300])
+        return back(job_id, f"d-{key}", "Farq tekshirildi")
 
     @app.post("/jobs/{job_id}/rejudge")
     def rejudge(request: Request, job_id: int) -> Response:

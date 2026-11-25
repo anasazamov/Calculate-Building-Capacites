@@ -44,6 +44,11 @@ class Approval(BaseModel):
     actor: str = Field(default="", description="The person in the calling system who approved")
 
 
+class DifferenceReview(BaseModel):
+    actor: str = Field(default="", description="The person in the calling system who compared both sources")
+    note: str = ""
+
+
 class StreetList(BaseModel):
     settlement: str = Field(description="\"Samarqand shahri\" or \"Payariq tumani\"")
     streets: list[str]
@@ -107,8 +112,11 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
             "fee": fee_data.get("result"), "fee_error": fee_data.get("error"),
             "open": rec["open"] if not fee_data.get("result") else [], "assumptions": rec["assumptions"],
             "exemptions": rec["exemptions"], "expertise": view.get("expertise"), "attention": view["attention"],
+            "differences": [{k: d[k] for k in ("key", "label", "project", "conclusion", "delta", "percent", "review")}
+                            | {"project_source": source(d["project_source"]), "conclusion_source": source(d["conclusion_source"])}
+                            for d in view["differences"]],
             "norms": view["norms"], "coverage": view["coverage"],
-            "ready_to_approve": bool(fee_data.get("result")),
+            "ready_to_approve": bool(fee_data.get("result")) and not view["unreviewed"],
         }
 
     @router.get("/health")
@@ -175,6 +183,19 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
         user = who(name, body.actor)
         h.store.set_decision(job_id, code, "changed", str(value), view["volumes"][code]["auto"]["value"], h.reason_field(body.reason), user)
         h.store.audit(job_id, user, "volume_changed", target=code, old=old["value"] if old else "", new=str(value), reason=body.reason)
+        return recommendation(h.get_job(job_id))
+
+    @router.put("/jobs/{job_id}/differences/{key}")
+    def review_difference(job_id: int, key: str, body: DifferenceReview, name: str = Depends(client)) -> dict:
+        """Mark one project-versus-conclusion difference as checked by a person (approval needs all of them)."""
+        job = h.get_job(job_id, need_result=True, editable=True)
+        found = [d for d in h.build_view(job)["differences"] if d["key"] == key]
+        if not found:
+            raise HTTPException(404, "Bunday farq yo'q")
+        user = who(name, body.actor)
+        h.store.review_difference(job_id, key, user, body.note.strip()[:300])
+        h.store.audit(job_id, user, "difference_reviewed", target=found[0]["label"], old=found[0]["conclusion"],
+                      new=found[0]["project"], reason=body.note.strip()[:300])
         return recommendation(h.get_job(job_id))
 
     @router.post("/jobs/{job_id}/approve")

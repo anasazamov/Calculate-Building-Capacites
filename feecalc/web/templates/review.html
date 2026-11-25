@@ -91,30 +91,55 @@
 </aside>
 
 <section>
-<h1>Tekshirish</h1>
-<p class="lead">O'qilgan har bir qiymat hujjatdagi manbasi bilan ko'rsatilgan. Qiymatni bossangiz, chap tomonda o'sha sahifa ochiladi va manba sariq bilan belgilanadi.</p>
-{% if locked %}<div class="callout ok"><b>Ish yakunlangan.</b> Qiymatlarni ko'rish mumkin, o'zgartirib bo'lmaydi.</div>{% endif %}
-{% if not view.has_project %}<div class="callout info"><b>Loyiha berilmagan.</b> Faqat xulosa o'qildi: loyiha bilan solishtirish bajarilmaydi, hajmlar xulosa asosida taklif qilinadi.</div>{% endif %}
-{% if result.warnings %}<div class="callout warn"><b>Ogohlantirishlar</b><ul>{% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}</ul></div>{% endif %}
+<div class="row between" style="margin-bottom:10px"><h1 style="margin:0">Tekshirish</h1>{% if locked %}<span class="badge ok">yakunlangan — faqat ko'rish</span>{% endif %}</div>
+{% if not view.has_project %}<div class="callout info">Loyiha berilmagan — faqat xulosa o'qildi, solishtirish yo'q.</div>{% endif %}
+
+{% set diffs = view.differences %}{% set left = view.unreviewed | length %}
+<div class="card" id="differences">
+  <div class="row between">
+    <h2 style="margin:0">Loyiha va xulosa farqlari</h2>
+    {% if diffs %}<span class="badge {{ 'ok' if not left else 'mismatch' }}">{{ diffs | length - left }} / {{ diffs | length }} tekshirildi</span>{% endif %}
+  </div>
+  {% if diffs %}
+  <p class="hint" style="margin:6px 0 10px">Hisob loyiha bo'yicha. Qiymatni bosing — chapda manbasi ochiladi. Har farqni ko'rib, «Tekshirildi» deb belgilang.</p>
+  <div class="tablewrap"><table class="fixed diffs">
+    <tr><th style="width:22%">Ko'rsatkich</th><th style="width:27%">Loyiha (hisobda)</th><th style="width:27%">Xulosa</th><th style="width:11%">Farq</th><th style="width:13%"></th></tr>
+    {% for d in diffs %}{% set ps, cs = d.project_source or {}, d.conclusion_source or {} %}
+    <tr id="d-{{ d.key }}" class="{{ 'reviewed' if d.review }}">
+      <td><b>{{ d.field }}</b>{% if d.where %}<div class="small muted">{{ d.where }}</div>{% endif %}</td>
+      <td {% if ps.file and ps.page %}class="src" tabindex="0" data-file="{{ ps.file }}" data-page="{{ ps.page }}" data-snippet="{{ ps.source_text or '' }}"{% endif %}>
+        {% if d.words %}{% for w, changed in d.words[0] %}<span class="{{ 'w-diff' if changed }}">{{ w }}</span> {% endfor %}{% else %}<b>{{ d.project }}</b>{% endif %}
+        {% if ps.page %}<div class="val-src">{{ ps.page }}-sahifa</div>{% endif %}</td>
+      <td {% if cs.file and cs.page %}class="src" tabindex="0" data-file="{{ cs.file }}" data-page="{{ cs.page }}" data-snippet="{{ cs.source_text or '' }}"{% endif %}>
+        {% if d.words %}{% for w, changed in d.words[1] %}<span class="{{ 'w-diff' if changed }}">{{ w }}</span> {% endfor %}{% else %}<b>{{ d.conclusion }}</b>{% endif %}
+        {% if cs.page %}<div class="val-src">{{ cs.page }}-sahifa</div>{% endif %}</td>
+      <td class="n">{% if d.delta is not none %}<b class="delta">{{ '+' if not d.delta.startswith('-') }}{{ d.delta | num }}</b>{% if d.percent %}<div class="small muted">{{ '+' if not d.percent.startswith('-') }}{{ d.percent | num }} %</div>{% endif %}{% else %}<span class="small muted">matn farqi</span>{% endif %}</td>
+      <td>{% if d.review %}<span class="badge ok">tekshirildi</span><div class="small muted">{{ d.review.user }}</div>
+            {% if not locked %}<form method="post" action="/jobs/{{ job.id }}/difference/{{ d.key }}"><input type="hidden" name="undo" value="1"><button type="submit" class="linkbtn">bekor qilish</button></form>{% endif %}
+          {% elif not locked %}<form method="post" action="/jobs/{{ job.id }}/difference/{{ d.key }}"><button type="submit" class="btn small">Tekshirildi</button></form>{% endif %}</td>
+    </tr>{% endfor %}
+  </table></div>
+  {% elif view.has_project %}<p class="callout ok" style="margin:8px 0 0">Farq yo'q — {{ view.expertise.compared }} ta ko'rsatkich mos.</p>
+  {% else %}<p class="muted" style="margin:8px 0 0">Solishtirib bo'lmadi.</p>{% endif %}
+</div>
 
 <div class="card" id="todo">
-  <h2>Sizdan nima kerak</h2>
-  <p>Beshta hajmning har birini tasdiqlang yoki sababini yozib o'zgartiring. Shundan keyin yig'imni hisoblab, ishni yakunlash mumkin.</p>
+  <h2>Hajmlar holati</h2>
   <div class="todo-vols">
     {% for code in VOLUME_CODES %}{% set d = view.decisions[code] %}
     <a class="todo-vol {{ 'valid' if d.valid }}" href="#vol-{{ code }}" title="{{ VOLUME_LABELS[code] }}"><b>{{ code }}</b>
-      <span class="state">{{ 'tasdiqlangan' if d.valid else ('qayta tasdiqlang' if d.stale else 'tasdiqlash kerak') }}</span></a>
+      <span class="state">{{ 'tasdiqlangan' if d.valid else ('qayta tasdiqlang' if d.stale else 'tasdiqlanmagan') }}</span></a>
     {% endfor %}
   </div>
   {% if view.attention %}
-  <h3>E'tibor bering: {{ view.attention | length }} ta joyda farq yoki tasdiqlanmagan qiymat bor</h3>
+  <h3>Boshqa e'tibor talab qiladigan joylar — {{ view.attention | length }} ta</h3>
   <ul class="attention">
     {% for a in view.attention %}
-    <li {% if a.file and a.page %}class="src" tabindex="0" data-file="{{ a.file }}" data-page="{{ a.page }}" data-snippet="{{ a.snippet }}" title="Manbani ko'rsatish"{% endif %}>
-      <span class="badge {{ a.kind }}">{{ a.label }}</span><span>{{ a.text }}</span><a href="#{{ a.anchor }}">jadvalda ko'rish</a></li>
+    <li {% if a.file and a.page %}class="src" tabindex="0" data-file="{{ a.file }}" data-page="{{ a.page }}" data-snippet="{{ a.snippet }}"{% endif %}>
+      <span class="badge {{ a.kind }}">{{ a.label }}</span><span>{{ a.text }}</span><a href="#{{ a.anchor }}">jadvalda</a></li>
     {% endfor %}
-  </ul>
-  {% else %}<p class="callout ok" style="margin:10px 0 0">Hujjatlar o'rtasida farq yoki tasdiqlanmagan qiymat topilmadi. Baribir hajmlarni manbasi bilan solishtirib chiqing.</p>{% endif %}
+  </ul>{% endif %}
+  {% if result.warnings %}<details class="sub"><summary>Ogohlantirishlar ({{ result.warnings | length }})</summary><ul class="small">{% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}</ul></details>{% endif %}
 </div>
 
 <h2 id="volumes" style="margin-top:24px">Hajmlar</h2>
@@ -200,7 +225,7 @@
 <details class="section" id="components">
   <summary>Hajmlarga kirmagan xonalar va maydonlar <span class="count">{{ others | length }} ta</span></summary>
   <div class="body">
-    <p class="hint">Toifa: Ha — avtoturargoh, Ht — texnik, Hu — umumiy foydalanish. Biror qator aslida shu toifalardan biriga kirsa, «o'zgartirish» orqali toifasini belgilang (sababi majburiy).</p>
+    <p class="hint">Aniq ko'rsatilmagan xona foydalanish maydoni hisoblanadi. Toifasi boshqacha bo'lsa — «o'zgartirish».</p>
     {% if others %}{{ component_rows(others) }}{% else %}<p class="muted">Bunday qator yo'q.</p>{% endif %}
   </div>
 </details>
@@ -218,7 +243,7 @@
 <details class="section" id="buildings" {% if view.buildings | length <= 3 %}open{% endif %}>
   <summary>Binolar: loyiha va xulosa <span class="count">xulosada {{ view.conclusion_buildings | length }} ta, loyihada {{ view.project_buildings | length }} ta</span></summary>
   <div class="body">
-  <p class="hint">Loyihadagi va xulosadagi binolar avtomatik juftlangan. Juftlash noto'g'ri bo'lsa, o'zgartiring.</p>
+
   {% for b in view.buildings %}
   {% set bi = loop.index %}
   <h3>{{ bi }}. {{ b.title }}{% if b.count %} <span class="badge">{{ b.count | num }} dona</span>{% endif %}</h3>
@@ -252,7 +277,7 @@
 <details class="section" id="plans">
   <summary>Qavat rejalaridan o'qilgan xonalar <span class="count">{{ view.plans | length }} ta varaq, {{ view.plans | sum(attribute='count') }} ta yozuv</span></summary>
   <div class="body">
-    <p class="hint">Chizmadagi har bir xona yozuvi (nomi va ostidagi maydoni) matn qatlamidan koordinata bo'yicha juftlab o'qilgan — model ishlatilmagan. Yozuvni bossangiz, chapda o'sha varaq ochiladi. Bu maydonlar hajmlarga avtomatik qo'shilmaydi: bitta reja bir necha qavatga tegishli bo'lishi va bir qavat ikki varaqda takrorlanishi mumkin; ular jadvaldagi qiymatlarni solishtirish uchun.</p>
+    <p class="hint">Xona nomi va maydoni chizmaning matn qatlamidan joylashuvi bo'yicha o'qilgan (modelsiz). Yozuvni bossangiz, chizmada ko'rsatiladi.</p>
     {% for s in view.plans %}
     <details class="sub"><summary>{{ s.page }}-sahifa: {{ s.rooms | length }} ta yozuv, jami {{ s.area | num }} m²{% for k, v in s.by_category.items() if k != 'other' %} · {{ k }} {{ v | num }} m²{% endfor %}{% if s.unnamed %} · <span class="flag">{{ s.unnamed }} tasining nomi topilmadi</span>{% endif %}</summary>
       <div class="body">{% if s.rooms %}<div class="tablewrap"><table>
@@ -281,7 +306,7 @@
     {% for status in ('mismatch', 'warning') %}{% set n = view.norms | selectattr('status', 'equalto', status) | list | length %}{% if n %}<span class="badge {{ status }}">{{ n }} ta {{ NORM_LABELS[status] }}</span>{% endif %}{% endfor %}</summary>
   <div class="body">
     {% if view.norms %}
-    <p class="hint">Tizim o'qigan raqamlar bilan tekshirib bo'ladigan talablargina tekshirilgan. Har birida me'yor bandi so'zma-so'z keltirilgan (manba: lex.uz). Bu maslahat, ekspertiza xulosasi o'rnini bosmaydi.</p>
+    <p class="hint">Maslahat: me'yor bandi lex.uz matnidan so'zma-so'z keltirilgan.</p>
     <div class="tablewrap"><table class="fixed">
       <tr><th style="width:28%">Talab</th><th style="width:21%">Natija</th><th>Tafsilot va me'yor</th></tr>
       {% for f in view.norms %}

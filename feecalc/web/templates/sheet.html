@@ -123,6 +123,13 @@
   {% for f in sheet.norms %}<tr class="small"><td>{{ f.title }}</td><td>{{ f.label }}</td><td>{{ f.detail }}</td><td>{{ f.norm }}</td></tr>{% endfor %}
 </table>{% endif %}
 
+{% if sheet.differences %}<h3>Loyiha va xulosa farqlari (hisob loyiha bo'yicha)</h3>
+<table>
+  <tr><th>Ko'rsatkich</th><th>Loyiha</th><th>Xulosa</th><th>Tekshirdi</th></tr>
+  {% for d in sheet.differences %}<tr class="small"><td>{{ d.label }}</td><td>{{ d.project }}</td><td>{{ d.conclusion }}</td>
+    <td>{% if d.review %}{{ d.review.user }}, {{ d.review.time }}{% else %}tekshirilmagan{% endif %}</td></tr>{% endfor %}
+</table>{% endif %}
+
 <h2>5. Kim nimani o'zgartirgan (audit jurnali)</h2>
 <table>
   <tr><th>Vaqt</th><th>Xodim</th><th>Amal</th><th>Obyekt</th><th>Eski</th><th>Yangi</th><th>Sabab</th></tr>

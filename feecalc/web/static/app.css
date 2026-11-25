@@ -264,6 +264,12 @@ pre.error { background: #1d2430; color: #ffd7d2; padding: 12px; border-radius: 8
                 font-size: 14px; }
 .attention li:last-child { border-bottom: 0; }
 .attention li a { margin-left: auto; white-space: nowrap; font-size: 13px; }
+.diffs td { vertical-align: top; }
+.diffs tr.reviewed { background: var(--ok-soft); }
+.diffs tr.reviewed td { color: var(--text-2); }
+.w-diff { background: #ffe1a6; border-radius: 3px; padding: 0 2px; font-weight: 600; color: var(--text); }
+.delta { color: var(--bad); font-variant-numeric: tabular-nums; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--brand); font: inherit; font-size: 12.5px; cursor: pointer; text-decoration: underline; }
 .vol { border-left: 5px solid var(--warn-solid); }
 .vol.valid { border-left-color: var(--ok); }
 .vol-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }

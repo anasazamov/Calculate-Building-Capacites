@@ -66,6 +66,11 @@ def test_whole_journey_through_the_api(api: TestClient, sample_dir: Path):
     changed = api.put(f"/api/v1/jobs/{jid}/volumes/Ht", headers=KEY, json={"value": "168.32", "reason": "Loyihachi hisobi", "actor": "Operator"})
     assert changed.status_code == 200 and changed.json()["volumes"]["Ht"]["value"] == "168.32"
     assert api.put(f"/api/v1/jobs/{jid}/volumes/Ht", headers=KEY, json={"value": "1", "reason": ""}).status_code == 422
+    blocked = api.post(f"/api/v1/jobs/{jid}/approve", headers=KEY, json={"kj": "other"})
+    assert blocked.status_code == 409 and "farq" in blocked.json()["detail"]             # differences not checked yet
+    for d in api.get(f"/api/v1/jobs/{jid}/recommendation", headers=KEY).json()["differences"]:
+        assert d["project_source"] and api.put(f"/api/v1/jobs/{jid}/differences/{d['key']}", headers=KEY,
+                                               json={"actor": "Operator", "note": "loyiha to'g'ri"}).status_code == 200
     sheet = api.post(f"/api/v1/jobs/{jid}/approve", headers=KEY,
                      json={"kj": "other", "contract_number": "ART-1", "actor": "Rahbar"})
     assert sheet.status_code == 200 and sheet.json()["finalized"]["by"] == "billing: Rahbar"
@@ -86,6 +91,10 @@ def test_reference_data_through_the_api(api: TestClient, sample_dir: Path):
                     json={"settlement": "Samarqand shahri", "streets": ["Maysazor"], "basis": "Qaror №5, 12.01.2026"})
     assert saved.status_code == 200 and saved.json()["central_streets"]["samarqand shahri"][0]["street"] == "maysazor"
     rec = api.get(f"/api/v1/jobs/{job['id']}/recommendation", headers=KEY).json()
-    assert rec["coefficients"]["kj"]["code"] == "central" and rec["ready_to_approve"] and rec["fee"]["fee"]
+    assert rec["coefficients"]["kj"]["code"] == "central" and rec["fee"]["fee"]
+    assert rec["differences"] and not rec["ready_to_approve"]                              # the differences come first
+    for d in rec["differences"]:
+        api.put(f"/api/v1/jobs/{job['id']}/differences/{d['key']}", headers=KEY, json={})
+    assert api.get(f"/api/v1/jobs/{job['id']}/recommendation", headers=KEY).json()["ready_to_approve"]
     assert api.put("/api/v1/reference/central-streets", headers=KEY,
                    json={"settlement": "Samarqand", "streets": ["X"], "basis": "sinov"}).status_code == 400

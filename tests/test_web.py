@@ -1,4 +1,5 @@
 """Web interface tests. The pipeline replays recorded model responses (see test_pipeline.py)."""
+import re
 import shutil
 from html import unescape
 from pathlib import Path
@@ -37,6 +38,14 @@ def upload(c: TestClient, sample_dir: Path, replay: bool = True) -> int:
         shutil.copytree(RAW, c.data_dir / "jobs" / str(job_id) / "raw")  # type: ignore[attr-defined]
     c.app.state.run_job(job_id)  # type: ignore[attr-defined]
     return job_id
+
+
+def review_all(c: TestClient, job: int) -> int:
+    """Mark every project-versus-conclusion difference of a job as checked; returns how many there were."""
+    keys = re.findall(rf'action="/jobs/{job}/difference/([0-9a-f]+)"><button', c.get(f"/jobs/{job}/review").text)
+    for key in keys:
+        assert c.post(f"/jobs/{job}/difference/{key}").status_code == 303
+    return len(keys)
 
 
 def test_money_format():
@@ -121,9 +130,14 @@ def test_full_flow(client: TestClient, sample_dir: Path):
                                                    "reason": "Albom Tip-2 uchun"}).status_code == 303
     assert client.post(f"/jobs/{job}/match", data={"project_index": "5", "conclusion_index": "0",
                                                    "reason": "sinov"}).status_code == 400
+    # every volume is confirmed, but the project and the conclusion differ: approval waits for staff to check them
+    blocked = client.post(f"/jobs/{job}/finalize", data=CALC)
+    assert blocked.status_code == 409 and "farq tekshirilmagan" in blocked.json()["detail"]
+    assert review_all(client, job) >= 1
     assert client.post(f"/jobs/{job}/finalize", data=CALC).status_code == 303
     sheet = client.get(f"/jobs/{job}/sheet.json").json()
     assert sheet["fee"]["result"]["fee"] == "4294208160" and sheet["finalized"]["by"] == "Sinov Xodim"
+    assert sheet["differences"] and all(d["review"]["user"] == "Sinov Xodim" for d in sheet["differences"])
     assert sheet["models"]["model1"]["vllm_version"] == "replay" and sheet["prompt_hashes"]
     actions = [a["action"] for a in sheet["audit"]]
     for action in ("job_created", "volume_confirmed", "volume_changed", "component_changed",
@@ -254,16 +268,22 @@ def test_review_starts_with_what_needs_attention(client: TestClient, sample_dir:
     login(client)
     job = upload(client, sample_dir)
     page = unescape(client.get(f"/jobs/{job}/review").text)
-    assert "Sizdan nima kerak" in page and "tasdiqlash kerak" in page and "E'tibor bering" in page
-    assert page.index("Sizdan nima kerak") < page.index('id="vol-Hb"') < page.index('id="fields"')
+    assert "Hajmlar holati" in page and "tasdiqlanmagan" in page
+    assert page.index('id="todo"') < page.index('id="vol-Hb"') < page.index('id="fields"')
     from feecalc import pipeline
     from feecalc.web.app import attention
     view = pipeline.assess(client.app.state.store.job(job)["result"])  # type: ignore[attr-defined]
     items = attention(view)
-    assert any(i["kind"] == "mismatch" and i["anchor"] == "f-s1" for i in items)      # the address differs
+    assert not any(i["anchor"] == "f-s1" and i["kind"] == "mismatch" and "loyiha va xulosa" in i["text"] for i in items)
     assert all(f'id="{i["anchor"]}"' in page for i in items)                           # every item has its row
     assert [i["kind"] in ("conflict", "mismatch") for i in items] == sorted(
         [i["kind"] in ("conflict", "mismatch") for i in items], reverse=True)            # the serious ones first
+    # the address differs between the documents: it is in the differences list, with the differing words marked
+    assert "Loyiha va xulosa farqlari" in page and page.index('id="differences"') < page.index('id="vol-Hb"')
+    from feecalc.web.app import differences
+    found = differences(view, {})
+    address = [d for d in found if d["label"] == "Manzil"][0]
+    assert address["words"] and any(changed for _w, changed in address["words"][0]) and address["anchor"] == "f-s1"
 
 
 def test_home_lists_jobs_with_the_next_action(client: TestClient, sample_dir: Path):
@@ -316,6 +336,7 @@ def test_one_step_approval_finalizes_and_produces_the_contract_annex(client: Tes
     job = upload(client, sample_dir)
     form = {**CALC, "contract_number": "ART-11-26-90", "contract_date": "2026-11-25"}
     assert client.post(f"/jobs/{job}/approve", data={k: v for k, v in form.items() if k != "kj"}).status_code == 422
+    review_all(client, job)
     r = client.post(f"/jobs/{job}/approve", data=form)
     assert r.status_code == 303 and r.headers["location"] == f"/jobs/{job}/sheet"
     sheet = client.get(f"/jobs/{job}/sheet.json").json()
@@ -338,6 +359,7 @@ def test_staff_decisions_survive_approval(client: TestClient, sample_dir: Path):
     login(client)
     job = upload(client, sample_dir)
     assert client.post(f"/jobs/{job}/volume/Ht/change", data={"value": "168.32", "reason": "Loyihachi hisobi"}).status_code == 303
+    review_all(client, job)
     assert client.post(f"/jobs/{job}/approve", data=CALC).status_code == 303
     sheet = client.get(f"/jobs/{job}/sheet.json").json()
     assert sheet["volumes"]["Ht"]["decision"]["status"] == "changed" and sheet["volumes"]["Ht"]["decision"]["value"] == "168.32"
@@ -381,6 +403,7 @@ def test_contract_template_is_checked_and_filled(client: TestClient, sample_dir:
     assert refused.status_code == 400 and "summa" in refused.json()["detail"]
     with open(tmp_path / "good.docx", "rb") as f:
         assert client.post("/reference/template", files={"template": ("good.docx", f, "application/octet-stream")}).status_code == 303
+    review_all(client, job)
     assert client.post(f"/jobs/{job}/approve", data={**CALC, "contract_number": "ART-1"}).status_code == 303
     filled = client.get(f"/jobs/{job}/contract.docx")
     assert filled.status_code == 200
@@ -407,6 +430,7 @@ def test_contract_designer_from_upload_to_a_filled_contract(client: TestClient, 
     assert client.get("/contract-designer/page/1.png").headers["content-type"] == "image/png"
     assert client.get("/contract-designer/page/9.png").status_code == 404
     job = upload(client, sample_dir)
+    review_all(client, job)
     assert client.post(f"/jobs/{job}/approve", data={**CALC, "contract_number": "ART-7"}).status_code == 303
     assert client.get(f"/jobs/{job}/contract.pdf").status_code == 409                    # no field placed yet
     bad = client.post("/contract-designer/layout", json=[{"field": "nomalum", "page": 1, "x": 1, "y": 1, "w": 50, "h": 10}])
@@ -455,3 +479,44 @@ def test_judgment_stage_can_be_run_again_without_reading(client: TestClient, sam
     after = client.app.state.store.job(job)  # type: ignore[attr-defined]
     assert after["status"] == "ready" and after["result"]["judgments"]["structures"] == before["judgments"]["structures"]
     assert after["result"]["conclusion"] == before["conclusion"]                 # the reading itself is untouched
+
+
+
+def test_differences_are_shown_side_by_side_and_checked_one_by_one(client: TestClient, sample_dir: Path):
+    from feecalc.web.app import word_diff
+    left, right = word_diff("дом №11, ул. Майсазор, город Самарканд", "Samarqand shahar Maysazor ko'chasi 11-uy")
+    assert ("Майсазор,", False) in left and ("Maysazor", False) in right           # the same word in two scripts
+    assert any(changed for _w, changed in left) and any(changed for _w, changed in right)
+    login(client)
+    job = upload(client, sample_dir)
+    page = unescape(client.get(f"/jobs/{job}/review").text)
+    keys = re.findall(rf'action="/jobs/{job}/difference/([0-9a-f]+)"><button', page)
+    assert keys and 'class="w-diff"' in page
+    proposal = unescape(client.get(f"/jobs/{job}/proposal").text)
+    assert "tekshirilmagan" in proposal and "Farqlarni ko'rish" in proposal
+    r = client.post(f"/jobs/{job}/difference/{keys[0]}", data={"note": "loyiha to'g'ri"})
+    assert r.status_code == 303 and r.headers["location"].endswith(f"#d-{keys[0]}")
+    assert f"{1} / {len(keys)} tekshirildi" in unescape(client.get(f"/jobs/{job}/review").text)
+    assert client.post(f"/jobs/{job}/difference/{keys[0]}", data={"undo": "1"}).status_code == 303
+    assert f"0 / {len(keys)} tekshirildi" in unescape(client.get(f"/jobs/{job}/review").text)
+    assert client.post(f"/jobs/{job}/difference/0000000000000000").status_code == 404
+    actions = [a["action"] for a in client.app.state.store.audit_log(job)]  # type: ignore[attr-defined]
+    assert "difference_reviewed" in actions and "difference_unreviewed" in actions
+
+
+
+def test_numeric_difference_written_with_a_comma_is_shown(client: TestClient, sample_dir: Path):
+    """Values are shown as the document writes them ("251,37"); the delta is computed from the parsed numbers."""
+    from feecalc.web.app import differences
+    row = {"id": "x1", "name": "Hojatxona", "count": "21", "check": {"status": "mismatch"},
+           "project": {"value": "251,37", "number": "251.37", "status": "accepted", "file": "a.pdf", "page": 3},
+           "conclusion": {"value": "10,2", "number": "10.2", "status": "accepted", "file": "b.pdf", "page": 3}}
+    found = differences({"scalar_rows": [], "buildings": [], "hb_rows": [row]}, {})[0]
+    assert found["project"] == "251,37" and found["conclusion"] == "21 × 10,2 = 214.2" and found["delta"] == "-37.17"
+    login(client)
+    job = upload(client, sample_dir)
+    store = client.app.state.store  # type: ignore[attr-defined]
+    result = store.job(job)["result"]
+    result["conclusion"]["model1"]["buildings"][0]["volume"]["value"] = "88 433,2"   # a comma, as a document writes it
+    store.set_job(job, result=result)
+    assert client.get(f"/jobs/{job}/review").status_code == 200
