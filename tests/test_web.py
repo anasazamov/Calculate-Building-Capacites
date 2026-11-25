@@ -389,3 +389,35 @@ def test_contract_template_is_checked_and_filled(client: TestClient, sample_dir:
     fee_value = client.get(f"/jobs/{job}/sheet.json").json()["fee"]["result"]["fee"]
     from feecalc import contract
     assert "ART-1" in text and contract.money(fee_value) in text and contract.in_words(int(fee_value)) in text and "{{" not in text
+
+
+def test_contract_designer_from_upload_to_a_filled_contract(client: TestClient, sample_dir: Path, tmp_path: Path):
+    import pymupdf
+    login(client)
+    assert "Hali namuna yuklanmagan" in unescape(client.get("/contract-designer").text)
+    assert client.get("/contract-designer/preview.pdf").status_code == 404
+    doc = pymupdf.open()
+    doc.new_page().insert_text((60, 80), "Shartnoma namunasi", fontsize=12)
+    doc.save(str(tmp_path / "namuna.pdf"))
+    assert client.post("/contract-designer/pdf", files={"template": ("x.pdf", b"not a pdf", "application/pdf")}).status_code == 400
+    with open(tmp_path / "namuna.pdf", "rb") as f:
+        assert client.post("/contract-designer/pdf", files={"template": ("namuna.pdf", f, "application/pdf")}).status_code == 303
+    page = unescape(client.get("/contract-designer").text)
+    assert 'data-field="yigim"' in page and "/contract-designer/page/1.png" in page
+    assert client.get("/contract-designer/page/1.png").headers["content-type"] == "image/png"
+    assert client.get("/contract-designer/page/9.png").status_code == 404
+    job = upload(client, sample_dir)
+    assert client.post(f"/jobs/{job}/approve", data={**CALC, "contract_number": "ART-7"}).status_code == 303
+    assert client.get(f"/jobs/{job}/contract.pdf").status_code == 409                    # no field placed yet
+    bad = client.post("/contract-designer/layout", json=[{"field": "nomalum", "page": 1, "x": 1, "y": 1, "w": 50, "h": 10}])
+    assert bad.status_code == 400
+    saved = client.post("/contract-designer/layout", json=[
+        {"field": "shartnoma_raqami", "page": 1, "x": 200, "y": 68, "w": 150, "h": 16, "size": 12, "bold": True, "align": "left", "cover": True},
+        {"field": "yigim", "page": 1, "x": 60, "y": 120, "w": 200, "h": 16, "size": 11, "bold": False, "align": "left", "cover": False}])
+    assert saved.json() == {"saved": 2}
+    assert "«yig'im summasi, raqam bilan»" in pymupdf.open(stream=client.get("/contract-designer/preview.pdf").content, filetype="pdf")[0].get_text()
+    text = pymupdf.open(stream=client.get(f"/jobs/{job}/contract.pdf").content, filetype="pdf")[0].get_text()
+    fee_value = client.get(f"/jobs/{job}/sheet.json").json()["fee"]["result"]["fee"]
+    from feecalc import contract
+    assert "ART-7" in text and contract.money(fee_value) in text and "Shartnoma namunasi" in text
+    assert "Shartnoma (PDF)" in unescape(client.get(f"/jobs/{job}/sheet").text)

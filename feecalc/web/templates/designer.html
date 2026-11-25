@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Shartnoma konstruktori{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<h1>Shartnoma konstruktori</h1>
+<p class="lead">O'z shartnomangizning PDF nusxasini yuklang va o'zgaradigan joylarga maydonlarni sichqoncha bilan sudrab qo'ying. Tizim har bir ish uchun shu joylarga qiymatlarni bosib, tayyor shartnoma PDF chiqaradi.</p>
+
+<form method="post" action="/contract-designer/pdf" enctype="multipart/form-data" class="card row" style="align-items:center"
+      {% if present %}data-confirm-title="Namunani almashtirasizmi?" data-confirm-ok="Ha, almashtirish" data-confirm="Yangi namuna yuklansa, hozirgi joylashtirilgan maydonlar o'chadi."{% endif %}>
+  <b>{{ 'Namunani almashtirish:' if present else 'Shartnoma namunasi (PDF):' }}</b>
+  <input type="file" name="template" accept="application/pdf,.pdf" required>
+  <button type="submit" class="btn {{ 'secondary' if present }}">Yuklash</button>
+  <span class="hint">Skanerlangan PDF ham bo'ladi.</span>
+</form>
+
+{% if present %}
+<div class="designer">
+  <aside class="palette card">
+    <h2>Maydonlar</h2>
+    <p class="hint">Maydonni sahifaga sudrab tashlang. Qo'yilgan maydonni surish, chetidan tortib o'lchamini o'zgartirish mumkin.</p>
+    <input type="search" id="fieldsearch" placeholder="Maydonni qidirish" aria-label="Maydonni qidirish" style="width:100%;margin-bottom:8px">
+    <div id="chips">{% for name, meaning in fields.items() %}<div class="chip" draggable="true" data-field="{{ name }}" title="{{ name }}">{{ meaning }}</div>{% endfor %}</div>
+    <div id="props" hidden>
+      <h3>Tanlangan maydon</h3>
+      <p id="p-name" style="font-weight:600"></p>
+      <div class="field"><label for="p-size">Harf o'lchami</label><input id="p-size" type="number" min="5" max="40" step="0.5" style="width:90px"></div>
+      <div class="field"><label for="p-align">Tekislash</label><select id="p-align"><option value="left">chapga</option><option value="center">o'rtaga</option><option value="right">o'ngga</option></select></div>
+      <label style="font-weight:400"><input type="checkbox" id="p-bold"> qalin harf</label>
+      <label style="font-weight:400"><input type="checkbox" id="p-cover"> ostidagi eski yozuvni oq bilan yopish</label>
+      <button type="button" class="btn secondary small" id="p-delete" style="margin-top:8px">Maydonni o'chirish (Delete)</button>
+    </div>
+    <div class="palette-actions">
+      <button type="button" class="btn" id="save">Saqlash</button>
+      <a class="btn secondary" href="/contract-designer/preview.pdf" target="_blank" rel="noopener" id="preview">Ko'rib chiqish (PDF)</a>
+      <p class="hint" id="state"></p>
+    </div>
+  </aside>
+  <section class="sheets" id="sheets">
+    {% for w, h in sizes %}
+    <div class="dpage" data-page="{{ loop.index }}" data-width="{{ w }}" data-height="{{ h }}">
+      <div class="small muted">{{ loop.index }}-sahifa</div>
+      <div class="dsurface"><img src="/contract-designer/page/{{ loop.index }}.png" alt="{{ loop.index }}-sahifa" draggable="false" loading="lazy"></div>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+{% else %}
+<div class="card empty">Hali namuna yuklanmagan. Yuqorida shartnomangizning PDF faylini tanlang.</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if present %}
+<script>
+const LABELS = {{ fields | tojson }};
+const boxes = {{ layout | tojson }};          // {field, page, x, y, w, h, size, bold, align, cover} in page points
+let selected = null, dirty = false;
+const byId = (id) => document.getElementById(id);
+const surface = (page) => document.querySelector(`.dpage[data-page="${page}"] .dsurface`);
+const scaleOf = (page) => surface(page).clientWidth / Number(surface(page).parentElement.dataset.width);
+
+function mark(changed) {
+  dirty = changed;
+  byId('state').textContent = changed ? "Saqlanmagan o'zgarishlar bor." : `${boxes.length} ta maydon joylashtirilgan.`;
+}
+
+function place(el, b) {
+  const k = scaleOf(b.page);
+  Object.assign(el.style, { left: b.x * k + 'px', top: b.y * k + 'px', width: b.w * k + 'px', height: b.h * k + 'px',
+    fontSize: b.size * k + 'px', fontWeight: b.bold ? 700 : 400, textAlign: b.align,
+    background: b.cover ? 'rgba(255,255,255,.92)' : 'rgba(255,243,196,.55)' });
+}
+
+function draw() {
+  document.querySelectorAll('.dbox').forEach((e) => e.remove());
+  boxes.forEach((b, i) => {
+    const el = document.createElement('div');
+    el.className = 'dbox' + (i === selected ? ' on' : '');
+    el.dataset.index = i;
+    el.textContent = LABELS[b.field];
+    el.title = LABELS[b.field];
+    const grip = document.createElement('span');
+    grip.className = 'grip';
+    el.appendChild(grip);
+    place(el, b);
+    surface(b.page).appendChild(el);
+  });
+  const props = byId('props');
+  props.hidden = selected === null;
+  if (selected !== null) {
+    const b = boxes[selected];
+    byId('p-name').textContent = LABELS[b.field];
+    byId('p-size').value = b.size; byId('p-align').value = b.align; byId('p-bold').checked = b.bold; byId('p-cover').checked = b.cover;
+  }
+}
+
+// ----- palette: drag a field onto a page -----
+document.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('dragstart', (e) => {
+  e.dataTransfer.setData('text/plain', chip.dataset.field);
+  e.dataTransfer.effectAllowed = 'copy';
+}));
+document.querySelectorAll('.dsurface').forEach((s) => {
+  s.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  s.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const field = e.dataTransfer.getData('text/plain');
+    if (!LABELS[field]) return;
+    const page = Number(s.parentElement.dataset.page), k = scaleOf(page), r = s.getBoundingClientRect();
+    const w = 170, h = 16;
+    boxes.push({ field, page, x: Math.max(0, (e.clientX - r.left) / k - w / 2), y: Math.max(0, (e.clientY - r.top) / k - h / 2),
+                 w, h, size: 11, bold: false, align: 'left', cover: true });
+    selected = boxes.length - 1;
+    mark(true); draw();
+  });
+});
+
+// ----- move and resize a placed field -----
+let drag = null;
+byId('sheets').addEventListener('pointerdown', (e) => {
+  const el = e.target.closest('.dbox');
+  if (!el) { if (selected !== null && e.target.closest('.dsurface')) { selected = null; draw(); } return; }
+  selected = Number(el.dataset.index);
+  const b = boxes[selected];
+  drag = { resize: e.target.classList.contains('grip'), x: e.clientX, y: e.clientY, start: { ...b }, k: scaleOf(b.page) };
+  draw();
+  e.preventDefault();
+});
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const b = boxes[selected], dx = (e.clientX - drag.x) / drag.k, dy = (e.clientY - drag.y) / drag.k;
+  const page = surface(b.page).parentElement, W = Number(page.dataset.width), H = Number(page.dataset.height);
+  if (drag.resize) {
+    b.w = Math.max(10, Math.min(W - b.x, drag.start.w + dx)); b.h = Math.max(6, Math.min(H - b.y, drag.start.h + dy));
+  } else {
+    b.x = Math.max(0, Math.min(W - b.w, drag.start.x + dx)); b.y = Math.max(0, Math.min(H - b.h, drag.start.y + dy));
+  }
+  place(document.querySelector(`.dbox[data-index="${selected}"]`), b);
+  mark(true);
+});
+window.addEventListener('pointerup', () => { drag = null; });
+
+// ----- properties of the selected field -----
+const change = (apply) => () => { if (selected === null) return; apply(boxes[selected]); mark(true); draw(); };
+byId('p-size').addEventListener('input', change((b) => { b.size = Math.max(5, Math.min(40, Number(byId('p-size').value) || 11)); }));
+byId('p-align').addEventListener('change', change((b) => { b.align = byId('p-align').value; }));
+byId('p-bold').addEventListener('change', change((b) => { b.bold = byId('p-bold').checked; }));
+byId('p-cover').addEventListener('change', change((b) => { b.cover = byId('p-cover').checked; }));
+function remove() { if (selected === null) return; boxes.splice(selected, 1); selected = null; mark(true); draw(); }
+byId('p-delete').addEventListener('click', remove);
+window.addEventListener('keydown', (e) => {
+  if (selected === null || e.target.matches('input, select, textarea')) return;
+  const b = boxes[selected], step = e.shiftKey ? 5 : 0.5;
+  const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
+  else if (moves[e.key]) { e.preventDefault(); b.x = Math.max(0, b.x + moves[e.key][0]); b.y = Math.max(0, b.y + moves[e.key][1]); mark(true); draw(); }
+});
+
+byId('fieldsearch').addEventListener('input', () => {
+  const needle = byId('fieldsearch').value.trim().toLowerCase();
+  document.querySelectorAll('.chip').forEach((c) => { c.hidden = !c.textContent.toLowerCase().includes(needle); });
+});
+
+async function save() {
+  const r = await fetch('/contract-designer/layout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(boxes) });
+  const j = await r.json();
+  if (!r.ok) { toast(typeof j.detail === 'string' ? j.detail : 'Saqlab bo\'lmadi'); return false; }
+  mark(false); toast(`Saqlandi: ${j.saved} ta maydon`);
+  return true;
+}
+byId('save').addEventListener('click', save);
+byId('preview').addEventListener('click', async (e) => {
+  if (!dirty) return;
+  e.preventDefault();
+  if (await save()) window.open('/contract-designer/preview.pdf', '_blank', 'noopener');
+});
+window.addEventListener('beforeunload', (e) => { if (dirty) e.preventDefault(); });
+window.addEventListener('resize', draw);
+window.addEventListener('load', draw);
+mark(false); draw();
+</script>
+{% endif %}
+{% endblock %}

@@ -9,7 +9,7 @@
   <div>{% if fin %}<span class="badge ok">Yakunlangan</span>
        {% else %}<span class="badge not_run">Qoralama — ish hali tasdiqlanmagan</span> <a href="/jobs/{{ job.id }}/proposal">Tavsiyaga qaytish</a>{% endif %}</div>
   <div class="row">
-    {% if fin %}{% if has_template %}<a class="btn" href="/jobs/{{ job.id }}/contract.docx">Shartnoma (Word)</a>{% endif %}
+    {% if fin %}{% if has_pdf_template %}<a class="btn" href="/jobs/{{ job.id }}/contract.pdf">Shartnoma (PDF)</a>{% endif %}{% if has_template %}<a class="btn" href="/jobs/{{ job.id }}/contract.docx">Shartnoma (Word)</a>{% endif %}
     <a class="btn {{ 'secondary' if has_template }}" href="/jobs/{{ job.id }}/annex.docx">Hisoblash ma'lumotnomasi (Word)</a>{% endif %}
     <button type="button" class="btn secondary" onclick="window.print()">Chop etish</button>
     <a class="btn secondary" href="/jobs/{{ job.id }}/sheet.json">JSON</a>

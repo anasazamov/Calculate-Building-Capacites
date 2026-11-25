@@ -20,6 +20,7 @@ from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote, unquote
 
+import pymupdf
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -763,6 +764,85 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     def contract_template() -> Path:
         return data_dir / "reference" / "contract_template.docx"
 
+    def contract_pdf() -> Path:
+        return data_dir / "reference" / "contract_template.pdf"
+
+    def contract_layout() -> list[dict]:
+        path = data_dir / "reference" / "contract_layout.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+    def template_pages() -> int:
+        with ingest.MUPDF_LOCK, pymupdf.open(str(contract_pdf())) as doc:
+            return len(doc)
+
+    @app.get("/contract-designer", response_class=HTMLResponse)
+    def designer_page(request: Request) -> Response:
+        """Staff build the contract template by dragging fields onto the pages of their own contract PDF."""
+        present = contract_pdf().exists()
+        sizes: list[list[float]] = []
+        if present:
+            with ingest.MUPDF_LOCK, pymupdf.open(str(contract_pdf())) as doc:
+                sizes = [[p.rect.width, p.rect.height] for p in doc]
+        return templates.TemplateResponse(request, "designer.html", {
+            "staff": staff(request), "present": present, "sizes": sizes, "layout": contract_layout() if present else [],
+            "fields": contract.PLACEHOLDERS})
+
+    @app.post("/contract-designer/pdf")
+    async def designer_upload(request: Request, template: UploadFile = File(...)) -> Response:
+        user = require_staff(request)
+        if not (template.filename or "").lower().endswith(".pdf"):
+            raise HTTPException(400, "Shartnoma namunasi PDF fayl bo'lishi kerak")
+        body = await template.read()
+        if not body.startswith(b"%PDF"):
+            raise HTTPException(400, "Fayl PDF emas")
+        contract_pdf().parent.mkdir(parents=True, exist_ok=True)
+        contract_pdf().write_bytes(body)
+        (data_dir / "reference" / "contract_layout.json").write_text("[]", encoding="utf-8")
+        store.set_reference("setting", "contract_pdf", template.filename or "shartnoma.pdf", "shartnoma namunasi (PDF)", user)
+        return flash(RedirectResponse("/contract-designer", status_code=303), "Namuna yuklandi — endi maydonlarni joylashtiring")
+
+    @app.get("/contract-designer/page/{number}.png")
+    def designer_page_image(number: int) -> Response:
+        if not contract_pdf().exists():
+            raise HTTPException(404, "Shartnoma namunasi yuklanmagan")
+        with ingest.MUPDF_LOCK, pymupdf.open(str(contract_pdf())) as doc:
+            if not 1 <= number <= len(doc):
+                raise HTTPException(404, "Bunday sahifa yo'q")
+            image = doc[number - 1].get_pixmap(matrix=pymupdf.Matrix(2, 2)).tobytes("png")
+        return Response(image, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    @app.post("/contract-designer/layout")
+    async def designer_save(request: Request) -> dict:
+        user = require_staff(request)
+        if not contract_pdf().exists():
+            raise HTTPException(409, "Avval shartnoma namunasini yuklang")
+        boxes = await request.json()
+        problems = contract.layout_problems(boxes, template_pages())
+        if problems:
+            raise HTTPException(400, "Joylashuvda xato: " + problems)
+        layout = contract.clean_layout(boxes, template_pages())
+        (data_dir / "reference" / "contract_layout.json").write_text(json.dumps(layout, ensure_ascii=False), encoding="utf-8")
+        store.set_reference("setting", "contract_layout", f"{len(layout)} ta maydon", "shartnoma konstruktori", user)
+        return {"saved": len(layout)}
+
+    @app.get("/contract-designer/preview.pdf")
+    def designer_preview() -> Response:
+        if not contract_pdf().exists():
+            raise HTTPException(404, "Shartnoma namunasi yuklanmagan")
+        with ingest.MUPDF_LOCK:
+            body = contract.stamp(contract_pdf(), contract_layout(), contract.sample_values())
+        return Response(body, media_type="application/pdf")
+
+    @app.get("/jobs/{job_id}/contract.pdf")
+    def contract_pdf_file(job_id: int) -> Response:
+        """The contract: the organisation's PDF with this job's values stamped where staff placed the fields."""
+        if not contract_pdf().exists() or not contract_layout():
+            raise HTTPException(409, "Shartnoma shabloni tayyor emas: «Shartnoma konstruktori»da namunani yuklab, maydonlarni joylashtiring")
+        with ingest.MUPDF_LOCK:
+            body = contract.stamp(contract_pdf(), contract_layout(), contract.fields(final_sheet(job_id)))
+        return Response(body, media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="shartnoma_{job_id}.pdf"'})
+
     def final_sheet(job_id: int) -> dict:
         job = get_job(job_id, need_result=True)
         if job["final"] is None:
@@ -787,7 +867,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     def sheet_page(request: Request, job_id: int) -> Response:
         job, sheet = sheet_data(job_id)
         return templates.TemplateResponse(request, "sheet.html", {
-            "job": job, "sheet": sheet, "staff": staff(request), "has_template": contract_template().exists()})
+            "job": job, "sheet": sheet, "staff": staff(request), "has_template": contract_template().exists(),
+            "has_pdf_template": contract_pdf().exists() and bool(contract_layout())})
 
     @app.get("/jobs/{job_id}/sheet.json")
     def sheet_json(job_id: int) -> Response:

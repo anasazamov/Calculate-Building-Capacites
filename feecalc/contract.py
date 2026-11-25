@@ -15,6 +15,7 @@ import re
 from decimal import Decimal
 from pathlib import Path
 
+import pymupdf
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
@@ -83,6 +84,7 @@ def fields(sheet: dict) -> dict[str, str]:
         "oldindan_20": money(result["advance_20"]), "oldindan_20_soz": in_words(int(Decimal(result["advance_20"]))),
         "qolgan_80": money(result["remainder_80"]), "qolgan_80_soz": in_words(int(Decimal(result["remainder_80"]))),
         "yakunlagan": sheet["finalized"]["by"], "yakunlangan_sana": sheet["finalized"]["at"],
+        "murojaat_raqami": _scalar(sheet, "Murojaat raqami") or BLANK, "oldindan_foiz": "20%",
     }
     for code in VOLUME_NAMES:
         out[code.lower()] = money(sheet["volumes"][code]["decision"]["value"])
@@ -104,6 +106,7 @@ PLACEHOLDERS = {
     "qolgan_80": "qolgan 80%", "qolgan_80_soz": "qolgan 80%, so'z bilan", "yakunlagan": "tasdiqlagan xodim",
     "yakunlangan_sana": "tasdiqlangan vaqt", "hb": "Hb, m³", "hyu": "Hyu, m³", "ha": "Ha, m³", "ht": "Ht, m³", "hu": "Hu, m³",
     "kt": "Kt qiymati", "ko": "Ko qiymati", "kz": "Kz qiymati", "kj": "Kj qiymati", "kkengash": "Kengash koeffitsiyenti",
+    "murojaat_raqami": "ariza (murojaat) raqami", "oldindan_foiz": "oldindan to'lov foizi",
 }
 
 
@@ -193,3 +196,72 @@ def fill(template: Path, sheet: dict) -> bytes:
         for run in paragraph.runs[1:]:
             run.text = ""
     return _save(doc)
+
+
+# ---------- a contract made by placing fields on the pages of the organisation's own PDF ----------
+# The template is any PDF (a scan is fine). Staff drag fields onto its pages in the designer; the layout is a
+# list of boxes in page points. Filling stamps each value into its box, over a white patch if asked.
+_FONTS = {False: Path("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"),
+          True: Path("/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf")}
+_ALIGN = {"left": pymupdf.TEXT_ALIGN_LEFT, "center": pymupdf.TEXT_ALIGN_CENTER, "right": pymupdf.TEXT_ALIGN_RIGHT}
+
+
+def layout_problems(boxes: object, pages: int) -> str:
+    """Why a layout sent by the designer cannot be stored ("" when it can)."""
+    if not isinstance(boxes, list) or len(boxes) > 400:
+        return "ro'yxat kutilgan (ko'pi bilan 400 ta maydon)"
+    for b in boxes:
+        if not isinstance(b, dict) or b.get("field") not in PLACEHOLDERS:
+            return "noma'lum maydon"
+        if not all(isinstance(b.get(k), (int, float)) for k in ("page", "x", "y", "w", "h")):
+            return "maydon o'lchami son emas"
+        if not 1 <= int(b["page"]) <= pages or b["w"] < 10 or b["h"] < 6 or b["x"] < 0 or b["y"] < 0:
+            return "maydon sahifadan tashqarida yoki juda kichik"
+        if not isinstance(b.get("size", 11), (int, float)) or not 5 <= b.get("size", 11) <= 40:
+            return "harf o'lchami 5 dan 40 gacha bo'lishi kerak"
+        if b.get("align", "left") not in _ALIGN:
+            return "tekislash noto'g'ri"
+    return ""
+
+
+def clean_layout(boxes: object, pages: int) -> list[dict]:
+    """A layout as received from the designer, checked and reduced to what is stored. Bad input is an error."""
+    assert isinstance(boxes, list) and len(boxes) <= 400, "layout: a list of at most 400 boxes is expected"
+    out: list[dict] = []
+    for b in boxes:
+        assert isinstance(b, dict) and b.get("field") in PLACEHOLDERS, f"layout: unknown field {b!r}"
+        page, size = int(b["page"]), float(b.get("size", 11))
+        x, y, w, h = (float(b[k]) for k in ("x", "y", "w", "h"))
+        assert 1 <= page <= pages and 5 <= size <= 40 and w >= 10 and h >= 6 and x >= 0 and y >= 0, f"layout: bad box {b!r}"
+        assert b.get("align", "left") in _ALIGN, f"layout: bad alignment {b!r}"
+        out.append({"field": b["field"], "page": page, "x": round(x, 1), "y": round(y, 1), "w": round(w, 1), "h": round(h, 1),
+                    "size": size, "bold": bool(b.get("bold")), "align": b.get("align", "left"), "cover": bool(b.get("cover", True))})
+    return out
+
+
+def stamp(template: Path, layout: list[dict], values: dict[str, str]) -> bytes:
+    """The template PDF with every placed field filled. Text that does not fit its box is shrunk, never cut."""
+    doc = pymupdf.open(str(template))
+    for box in layout:
+        page = doc[box["page"] - 1]
+        rect = pymupdf.Rect(box["x"], box["y"], box["x"] + box["w"], box["y"] + box["h"])
+        font = _FONTS[box["bold"]]
+        name = ("contractbold" if box["bold"] else "contract") if font.exists() else ("tibo" if box["bold"] else "tiro")
+        text, options = values[box["field"]], {"fontname": name, "fontfile": str(font) if font.exists() else None,
+                                               "align": _ALIGN[box["align"]]}
+        # Fit is tried on a scratch page: first a smaller letter, then a taller box - the text is never cut.
+        scratch = pymupdf.open().new_page(width=page.rect.width, height=page.rect.height)
+        size = box["size"]
+        while size > 6 and scratch.insert_textbox(rect, text, fontsize=size, **options) < 0:
+            size -= 0.5
+        while rect.y1 < page.rect.height and scratch.insert_textbox(rect, text, fontsize=size, **options) < 0:
+            rect.y1 += size
+        if box["cover"]:
+            page.draw_rect(rect, color=None, fill=(1, 1, 1))
+        page.insert_textbox(rect, text, fontsize=size, **options)
+    return doc.tobytes(deflate=True)
+
+
+def sample_values() -> dict[str, str]:
+    """What the designer's preview prints: each field's own name, so that the placement can be judged."""
+    return {name: f"«{meaning}»" for name, meaning in PLACEHOLDERS.items()}

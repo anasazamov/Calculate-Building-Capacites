@@ -334,6 +334,25 @@ textarea { width: 100%; min-height: 96px; }
 .card form .field input[type=text], .card form .field select { width: 100%; }
 .placeholders { columns: 2; font-size: 13px; margin: 6px 0 0; padding-left: 18px; }
 
+/* ---------- contract designer ---------- */
+.designer { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+.palette { position: sticky; top: 8px; max-height: calc(100vh - 16px); overflow: auto; margin: 0; }
+.chip { padding: 6px 10px; margin-bottom: 5px; border: 1px solid var(--brand-line); border-radius: 8px; background: var(--brand-soft);
+        color: var(--brand-hover); font-size: 13.5px; cursor: grab; user-select: none; }
+.chip:hover { border-color: var(--brand); }
+.chip:active { cursor: grabbing; }
+.palette-actions { position: sticky; bottom: -18px; background: var(--surface); padding: 10px 0 0; margin-top: 10px;
+                   border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.sheets { display: grid; gap: 18px; justify-items: center; }
+.dpage { width: min(100%, 900px); }
+.dsurface { position: relative; background: #fff; box-shadow: 0 2px 12px rgba(20, 27, 39, .25); line-height: 1.15; overflow: hidden; }
+.dsurface img { display: block; width: 100%; user-select: none; -webkit-user-drag: none; }
+.dbox { position: absolute; outline: 1.5px dashed var(--brand); color: var(--brand-deep); font-family: "Liberation Serif", "Times New Roman", serif;
+        white-space: nowrap; overflow: hidden; cursor: move; touch-action: none; }
+.dbox.on { outline: 2px solid #e6a700; z-index: 2; }
+.dbox .grip { position: absolute; right: 0; bottom: 0; width: 10px; height: 10px; background: var(--brand); cursor: nwse-resize; }
+.dbox.on .grip { background: #e6a700; }
+
 /* ---------- calculation sheet ---------- */
 .sheetbar { max-width: 920px; margin: 0 auto 12px; display: flex; justify-content: space-between; align-items: center;
             gap: 10px; flex-wrap: wrap; }
@@ -350,6 +369,8 @@ textarea { width: 100%; min-height: 96px; }
   .review { grid-template-columns: 1fr; }
   .viewer { position: relative; top: 0; height: 62vh; }
   .calc { grid-template-columns: 1fr; }
+  .designer { grid-template-columns: 1fr; }
+  .palette { position: static; max-height: none; }
   .refgrid { grid-template-columns: 1fr; }
   .result { position: static; }
 }

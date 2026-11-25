@@ -52,3 +52,23 @@ def test_annex_is_a_word_document_with_the_figures():
     for part in ("HISOBLASH MA'LUMOTNOMASI", "ART-11-26-90", "«Namuna» MCHJ", "36 036", "3 335,8", "4 294 208 160 so'm",
                  "to'rt milliard", "858 841 632", "3 435 366 528", "440 000", "Sinov Xodim"):
         assert part in text, part
+
+
+def test_fields_are_stamped_onto_the_pages_of_a_pdf_template(tmp_path):
+    import pymupdf
+    template = tmp_path / "template.pdf"
+    doc = pymupdf.open()
+    doc.new_page().insert_text((60, 80), "SHARTNOMA  ESKI-RAQAM", fontsize=12)
+    doc.new_page()
+    doc.save(str(template))
+    layout = contract.clean_layout([
+        {"field": "shartnoma_raqami", "page": 1, "x": 130, "y": 68, "w": 160, "h": 16, "size": 12, "bold": True},
+        {"field": "yigim", "page": 2, "x": 60, "y": 100, "w": 200, "h": 16, "align": "right", "cover": False},
+        {"field": "obyekt", "page": 2, "x": 60, "y": 140, "w": 120, "h": 12}], pages=2)       # long text in a small box: shrunk
+    assert layout[0]["cover"] and layout[1]["align"] == "right" and layout[1]["size"] == 11
+    out = pymupdf.open(stream=contract.stamp(template, layout, contract.fields(SHEET)), filetype="pdf")
+    assert "ART-11-26-90" in out[0].get_text() and "4 294 208 160" in out[1].get_text()
+    assert "Maysazor" in out[1].get_text()                                                 # nothing was cut off
+    assert contract.layout_problems([{"field": "summa", "page": 1, "x": 0, "y": 0, "w": 50, "h": 10}], 2) == "noma'lum maydon"
+    assert contract.layout_problems([{"field": "yigim", "page": 5, "x": 0, "y": 0, "w": 50, "h": 10}], 2) != ""
+    assert contract.layout_problems(layout, 2) == "" and set(contract.sample_values()) == set(contract.PLACEHOLDERS)
