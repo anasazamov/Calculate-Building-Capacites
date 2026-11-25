@@ -134,6 +134,25 @@ har mahallaga koeffitsiyent belgilagan (VM 526 asosida). Tizim VM 151 4-ilovasi 
 ruxsat etilgandan yuqori hajmni BHMning 0,5–1 baravarida baholaydi, formula esa Hyu ni to'liq qo'shadi.
 (4) Markaziy qatnov ko'chalari ro'yxati lex.uz da topilmadi.
 
+### Tajriba: vositalarni o'zi tanlaydigan agent (25.11.2026, o'lchandi)
+
+`feecalc/agent.py` — model (Qwen) vositalar bilan (sahifalar ro'yxati, sahifani o'qish, qidirish, me'yorni
+qarash, hisoblash) qadamlarni o'zi tanlaydi; javobi asosiy tizimdagi manba tekshiruvidan o'tadi. Veb-ilovada
+ishlatilmaydi. Beshta namuna, bir martadan, 24 qadam chegarasi (`scripts/agent_experiment.py model1`):
+
+| Obyekt | Qadam | Vaqt | Natija | Asosiy tizim |
+|---|---|---|---|---|
+| 284459 | 19 | 49 s | Hb = 124 433,19, uch bino, manbalar tasdiqlandi | 124 433,19 |
+| 298814 | 5 | 13 s | Hb = 2 226,0, manba tasdiqlandi | 2 226,0 |
+| 302030 | 9 | 23 s | **Hb = 954,14 — noto'g'ri**: 21 ta kottejdan bittasining hajmi olingan, manbalar «tasdiqlandi» | 20 082,85 (taxminlari bilan) |
+| 291405 | 24 | 39 s | tugatmadi (qadam chegarasi) | 10 740 (DIQQAT belgisi bilan) |
+| 302704 | 24 | 34 s | tugatmadi (qadam chegarasi) | 52 043,7 (taxminlari bilan) |
+
+Xulosa: agent tez, lekin ishonchsiz. Beshtadan ikkitasi to'g'ri, ikkitasi tugamadi, bittasi jim xato: har bir son
+hujjatda bor va tekshiruvdan o'tgan, ammo binolar soni e'tiborga olinmagani uchun yig'indi 20 baravar kam. Manba
+tekshiruvi bunday xatoni ushlamaydi — uni asosiy tizimdagi kod qoidalari (soni × birlik, loyiha bilan
+solishtirish) ushlaydi. Shu sababli agent rejimi asosiy yo'l sifatida tavsiya qilinmaydi.
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi
