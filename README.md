@@ -95,6 +95,11 @@ From your workstation open an SSH tunnel and browse to <http://127.0.0.1:8000>:
 ssh -N -L 8000:127.0.0.1:8000 user@server
 ```
 
+Listening on a public address is a deviation from principle 4 and is off by default. If it is
+needed, set `FEECALC_HOST=0.0.0.0` together with a password (16+ characters) and a TLS pair;
+the server refuses to start on a non-loopback address without them. The model servers stay on
+`127.0.0.1` in every case.
+
 The interface works with model 1 alone; when model 2 is running, its answers are shown next
 to model 1 and disagreements are flagged.
 
@@ -111,6 +116,9 @@ fractions to 0.90.
 | `FEECALC_DATA` | `data` | uploads, page images, raw model responses, SQLite database |
 | `FEECALC_MODEL1_URL` / `FEECALC_MODEL1_NAME` | `http://127.0.0.1:8001/v1` / `qwen3.8-27b` | model 1 |
 | `FEECALC_MODEL2_URL` / `FEECALC_MODEL2_NAME` | `http://127.0.0.1:8002/v1` / `gemma-4-31b-it` | model 2 |
+| `FEECALC_HOST` / `FEECALC_PORT` | `127.0.0.1` / `8000` | web listen address |
+| `FEECALC_PASSWORD` | empty | HTTP Basic password (any user name); required on a non-loopback address |
+| `FEECALC_TLS_CERT` / `FEECALC_TLS_KEY` | unset | TLS pair; required on a non-loopback address |
 | `FEECALC_DEGENERATE_MARKER` | `logs/degenerate_marker.jsonl` | marker file watched by the watchdog |
 
 ## Tests and measurements

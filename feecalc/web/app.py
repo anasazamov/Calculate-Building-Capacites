@@ -8,8 +8,10 @@ import csv
 import io
 import json
 import os
+import base64
 import queue
 import re
+import secrets
 import threading
 import traceback
 from decimal import Decimal
@@ -42,8 +44,23 @@ def num(v: object) -> str:
     return "" if v is None else fee.fmt_num(Decimal(str(v))).replace(".", ",")
 
 
-def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True) -> FastAPI:
+def password_ok(header: str, password: str) -> bool:
+    """Check an HTTP Basic `Authorization` header; the user name is ignored."""
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "basic" or not re.fullmatch(r"[A-Za-z0-9+/]+=*", token) or len(token) % 4:
+        return False
+    given = base64.b64decode(token).partition(b":")[2]
+    return secrets.compare_digest(given, password.encode("utf-8"))
+
+
+def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: str = "") -> FastAPI:
     app = FastAPI(title="Infratuzilma yig'imi", docs_url=None, redoc_url=None, openapi_url=None)
+    if password:
+        @app.middleware("http")
+        async def require_password(request: Request, call_next):  # type: ignore[no-untyped-def]
+            if password_ok(request.headers.get("authorization", ""), password):
+                return await call_next(request)
+            return Response("Parol kerak", status_code=401, headers={"WWW-Authenticate": 'Basic realm="feecalc"'})
     store = Store(data_dir / "feecalc.db")
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     templates.env.filters["money"] = money

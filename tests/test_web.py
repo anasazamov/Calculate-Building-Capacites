@@ -184,3 +184,12 @@ def test_conclusion_only_upload(client: TestClient, sample_dir: Path):
     assert client.get(f"/jobs/{job}/status").json()["status"] == "ready"
     page = unescape(client.get(f"/jobs/{job}/review").text)
     assert "Loyiha berilmagan" in page and "Tip-1" in page and "88433,2" in page
+
+
+def test_password_gate(tmp_path: Path) -> None:
+    c = TestClient(create_app(tmp_path, start_worker=False, password="correct horse battery"), follow_redirects=False)
+    assert c.get("/").status_code == 401
+    assert c.get("/static/app.css").status_code == 401
+    assert c.get("/", auth=("x", "wrong")).status_code == 401
+    assert c.get("/", headers={"Authorization": "Basic !!!"}).status_code == 401
+    assert c.get("/", auth=("anyone", "correct horse battery")).status_code in (200, 303)
