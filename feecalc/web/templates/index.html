@@ -1,35 +1,87 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Ishlar</h1>
-<div class="card">
-  <h2 style="margin-top:0">Yangi ish: hujjatlarni yuklash</h2>
-  <form method="post" action="/jobs" enctype="multipart/form-data">
-    <div class="row">
-      <div><label>Ish nomi (ixtiyoriy)</label><input type="text" name="title" size="34" placeholder="masalan: Maysazor, Tip-2"></div>
-      <div><label>Loyiha albomi — bir yoki bir nechta PDF (bo'lmasa bo'sh qoldiring)</label><input type="file" name="project" accept="application/pdf,.pdf" multiple></div>
-      <div><label>Ekspertiza xulosasi — PDF</label><input type="file" name="conclusion" accept="application/pdf,.pdf" required></div>
-      <div><button type="submit" {% if not staff %}disabled title="Avval xodim ismini kiriting"{% endif %}>Yuklash va navbatga qo'yish</button></div>
+<section class="card">
+  <h1>Yangi hisob-kitob</h1>
+  <p class="lead">Ekspertiza xulosasini va (bo'lsa) loyiha albomini yuklang. Tizim hajmlarni hujjatdan o'qiydi, siz ularni manbasi bilan solishtirib tasdiqlaysiz va yig'imni hisoblaysiz.</p>
+  {% if not model1_up %}<div class="callout bad"><b>O'qish modeli hozir ishlamayapti.</b> Yuklangan ish xato bilan to'xtaydi — avval administratorga murojaat qiling.</div>
+  {% elif not model2_up %}<div class="callout info">Ikkinchi model hozir ishlamayapti: hujjatlar bitta model bilan o'qiladi, ikki model solishtiruvi bo'lmaydi.</div>{% endif %}
+  <form method="post" action="/jobs" enctype="multipart/form-data" id="upload">
+    <div class="dropgrid">
+      <label class="dropzone" data-dropzone>
+        <input type="file" name="conclusion" accept="application/pdf,.pdf" required>
+        <span class="dz-title">1. Ekspertiza xulosasi <em class="req">majburiy</em></span>
+        <span class="dz-hint">PDF faylni shu yerga tashlang yoki bosib tanlang.</span>
+        <span class="dz-files" data-files></span>
+        <button type="button" class="btn secondary small dz-clear" data-clear hidden>Olib tashlash</button>
+      </label>
+      <label class="dropzone" data-dropzone>
+        <input type="file" name="project" accept="application/pdf,.pdf" multiple>
+        <span class="dz-title">2. Loyiha albomi <em class="opt">ixtiyoriy</em></span>
+        <span class="dz-hint">Bir yoki bir nechta PDF. Loyiha bo'lmasa bo'sh qoldiring — faqat xulosa o'qiladi.</span>
+        <span class="dz-files" data-files></span>
+        <button type="button" class="btn secondary small dz-clear" data-clear hidden>Olib tashlash</button>
+      </label>
     </div>
+    <div class="row">
+      <div class="field grow"><label for="title">Ish nomi <span class="muted">(ixtiyoriy)</span></label>
+        <input id="title" type="text" name="title" maxlength="120" placeholder="masalan: Maysazor ko'chasi, 16 qavatli uy"></div>
+      <div class="field"><button type="submit" class="btn big">O'qishni boshlash</button></div>
+    </div>
+    <p class="hint">O'qish odatda 2–5 daqiqa oladi (faqat xulosa bo'lsa 1–2 daqiqa). Hujjatlar shu serverdan tashqariga chiqmaydi. Skanerlangan, matn qatlami yo'q sahifalar o'qilmaydi va «matnsiz» deb belgilanadi.</p>
   </form>
-  <p class="small muted">Modellar holati:
-    1-model <span class="badge {{ 'ok' if model1_up else 'bad' }}">{{ 'ishlayapti' if model1_up else 'ishlamayapti' }}</span>
-    2-model <span class="badge {{ 'ok' if model2_up else 'not_found' }}">{{ 'ishlayapti' if model2_up else "yo'q (faqat 1-model bilan ishlaydi)" }}</span>.
-    Hujjatlar serverdan tashqariga chiqmaydi; OCR yo'q — matn qatlami bo'lmagan sahifa "matnsiz" deb belgilanadi.</p>
+</section>
+
+<div class="listhead">
+  <h2>Ishlar</h2>
+  {% if jobs %}
+  <input type="search" id="q" placeholder="Qidirish: nomi yoki xodim" aria-label="Ishlarni qidirish">
+  <a class="btn secondary small" href="/export.csv" title="Excel'da ochiladigan jadval">CSV yuklab olish</a>
+  {% endif %}
 </div>
-<div class="row" style="justify-content:space-between"><h2>Barcha ishlar</h2><a class="btn secondary" href="/export.csv">CSV eksport</a></div>
-<table>
-  <tr><th>№</th><th>Nomi</th><th>Holati</th><th>Yaratilgan</th><th>Xodim</th>
-      {% for c in VOLUME_CODES %}<th class="n">{{ c }}, m³</th>{% endfor %}<th class="n">Yig'im, so'm</th><th></th></tr>
+{% if jobs %}
+<div class="tablewrap"><table class="jobs">
+  <thead><tr><th>№</th><th>Nomi</th><th>Holati</th><th>Yuklangan</th><th>Xodim</th><th>Hajmlar, m³</th><th class="n">Yig'im, so'm</th><th></th></tr></thead>
+  <tbody id="jobs">
   {% for j in jobs %}
   {% set fin = j.final or {} %}
+  {% set base = '/jobs/%d' % j.id %}
+  {% set url, action, kind = {
+      'queued': (base, "Jarayonni ko'rish", 'secondary'), 'running': (base, "Jarayonni ko'rish", 'secondary'),
+      'ready': (base ~ '/review', 'Davom etish', ''), 'finalized': (base ~ '/sheet', 'Varaqani ochish', 'secondary'),
+      'failed': (base, "Xatoni ko'rish", 'secondary')}[j.status] %}
   <tr>
-    <td>{{ j.id }}</td><td><a href="/jobs/{{ j.id }}">{{ j.title }}</a></td>
+    <td>{{ j.id }}</td>
+    <td class="title"><a href="{{ url }}">{{ j.title }}</a></td>
     <td><span class="badge {{ j.status }}">{{ JOB_STATUS[j.status] }}</span></td>
-    <td>{{ j.created }}</td><td>{{ j.created_by }}</td>
-    {% for c in VOLUME_CODES %}<td class="n">{% if fin %}{{ fin.volumes[c].decision.value | num }}{% endif %}</td>{% endfor %}
-    <td class="n">{% if fin %}{{ fin.fee.result.fee | money }}{% endif %}</td>
-    <td>{% if j.status in ('ready', 'finalized') %}<a href="/jobs/{{ j.id }}/review">tekshirish</a> · <a href="/jobs/{{ j.id }}/calc">hisob</a>{% if fin %} · <a href="/jobs/{{ j.id }}/sheet">varaqa</a>{% endif %}{% endif %}</td>
+    <td class="small">{{ j.created }}</td>
+    <td>{{ j.created_by }}</td>
+    <td class="vols">{% if fin %}{% for c in VOLUME_CODES %}{{ c }} {{ fin.volumes[c].decision.value | money }}{{ ' · ' if not loop.last }}{% endfor %}
+      {% elif j.status == 'ready' %}5 ta hajmdan {{ decided.get(j.id, 0) }} tasi tasdiqlangan{% endif %}</td>
+    <td class="n">{% if fin %}<b>{{ fin.fee.result.fee | money }}</b>{% endif %}</td>
+    <td class="n"><a class="btn small {{ kind }}" href="{{ url }}">{{ action }}</a></td>
   </tr>
-  {% else %}<tr><td colspan="12" class="muted">Hali ish yuklanmagan.</td></tr>{% endfor %}
-</table>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p class="empty" id="nomatch" hidden>Qidiruvga mos ish topilmadi.</p>
+{% else %}
+<div class="card empty">Hali birorta ish yuklanmagan. Yuqorida xulosa faylini tanlab, «O'qishni boshlash»ni bosing.</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+// Filter the job list as the user types.
+const q = document.getElementById('q');
+if (q) {
+  q.addEventListener('input', () => {
+    const needle = q.value.trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll('#jobs tr').forEach((row) => {
+      row.hidden = !row.textContent.toLowerCase().includes(needle);
+      if (!row.hidden) shown += 1;
+    });
+    document.getElementById('nomatch').hidden = shown > 0;
+  });
+}
+</script>
 {% endblock %}

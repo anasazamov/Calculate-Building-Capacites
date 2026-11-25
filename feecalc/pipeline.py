@@ -6,6 +6,7 @@ floors, chosen building) into components, volume proposals and checks.
 """
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -50,11 +51,13 @@ def classify_sheets(m: llm.Model, pages: list[ingest.Page], raw_dir: Path) -> di
 
 
 def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path,
-                   progress: Progress = lambda stage: None) -> dict:
+                   progress: Progress = lambda stage: None,
+                   report: Callable[[int, int], None] = lambda done, total: None) -> dict:
     """Read both documents with every available model. Any failure propagates to the job boundary.
 
     `project_pdfs` may be empty: then only the conclusion is read and every comparison stays
-    in the "project not provided" state.
+    in the "project not provided" state. `report(done, total)` is called as reading requests
+    finish (a response found in the raw store counts as finished), so a caller can show progress.
     """
     m1 = llm.model1()
     if not llm.server_ready(m1):
@@ -81,6 +84,19 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
                   "sha256": ingest.sha256_file(conclusion_pdf),
                   "pages": [_page_meta(p, None) for p in conclusion_pages]})
 
+    total = len(models) * (len(extract.conclusion_chunks(conclusion_pages).chunks) + sum(
+        len(extract.project_chunks(pdf, pages, kinds).chunks) for pdf, pages, kinds in project_files))
+    finished = 0
+    counter = threading.Lock()  # requests finish on several threads
+
+    def tick() -> None:
+        nonlocal finished
+        with counter:
+            finished += 1
+            report(finished, total)
+
+    report(0, total)
+
     # Each document is read separately; the two models run side by side (separate servers).
     def read_all(reader: Callable[[llm.Model], dict]) -> dict[str, dict]:
         with ThreadPoolExecutor(max_workers=len(models)) as pool:
@@ -98,8 +114,9 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     progress("project" if project_files else "conclusion")
     with ThreadPoolExecutor(max_workers=2) as documents:
         conclusion_job = documents.submit(timed, "conclusion",
-                                          lambda m: extract.read_conclusion(m, conclusion_pages, raw_dir))
-        project = timed("project", lambda m: extract.read_project(m, project_files, raw_dir)) if project_files else {}
+                                          lambda m: extract.read_conclusion(m, conclusion_pages, raw_dir, tick))
+        project = (timed("project", lambda m: extract.read_project(m, project_files, raw_dir, tick))
+                   if project_files else {})
         progress("conclusion")
         conclusion = conclusion_job.result()  # an error is raised here
 

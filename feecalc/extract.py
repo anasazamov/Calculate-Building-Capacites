@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
@@ -384,10 +385,14 @@ _PROMPTS = {"conclusion": (CONCLUSION_SYSTEM, CONCLUSION_SCHEMA), "tep": (TEP_SY
             "rooms": (ROOMS_SYSTEM, ROOMS_SCHEMA)}
 
 
-def ask_chunks(m: llm.Model, chunks: list[Chunk], raw_dir: Path) -> list[tuple[Chunk, llm.Response]]:
+def ask_chunks(m: llm.Model, chunks: list[Chunk], raw_dir: Path,
+               tick: Callable[[], None] = lambda: None) -> list[tuple[Chunk, llm.Response]]:
+    """One request per chunk; `tick` is called (from worker threads) each time a response has arrived."""
     def one(c: Chunk) -> tuple[Chunk, llm.Response]:
         system, schema = _PROMPTS[c.kind]
-        return c, llm.ask(m, system, "Text:\n" + c.text, schema, MAX_TOKENS[c.kind], raw_dir)
+        response = llm.ask(m, system, "Text:\n" + c.text, schema, MAX_TOKENS[c.kind], raw_dir)
+        tick()
+        return c, response
 
     with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
         return list(pool.map(one, chunks))  # an error is raised here
@@ -471,7 +476,8 @@ def flag_floor_contradictions(buildings: list[dict], statements: list[dict]) -> 
             b["floors"]["flags"].append(f"{CONTRADICTION}: hujjatda qavatlar soni boshqacha ham yozilgan — {listed}")
 
 
-def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path) -> dict:
+def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path,
+                    tick: Callable[[], None] = lambda: None) -> dict:
     prep = conclusion_chunks(pages)
     texts = page_texts(pages, [])
     file = pages[0].file if pages else ""
@@ -480,7 +486,7 @@ def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path) -> dict:
     buildings: list[dict] = []
     site: list[dict] = []
     requests: list[dict] = []
-    for c, r in ask_chunks(m, prep.chunks, raw_dir):
+    for c, r in ask_chunks(m, prep.chunks, raw_dir, tick):
         requests.append(_record(c, r))
         d = r.data
         for k in CONCLUSION_SCALARS:
@@ -509,7 +515,7 @@ def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path) -> dict:
 
 
 def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, classify.SheetType]]],
-                 raw_dir: Path) -> dict:
+                 raw_dir: Path, tick: Callable[[], None] = lambda: None) -> dict:
     """The project album (one or several PDFs). Every relevant sheet is one request."""
     scalars: dict[str, list[dict]] = {k: [] for k in PROJECT_SCALARS}
     addresses: list[dict] = []
@@ -525,7 +531,7 @@ def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, cla
         warnings.extend(prep.warnings)
         texts = page_texts(pages, prep.chunks)
         file = pdf_path.name
-        for c, r in ask_chunks(m, prep.chunks, raw_dir):
+        for c, r in ask_chunks(m, prep.chunks, raw_dir, tick):
             requests.append(_record(c, r))
             d, page = r.data, c.pages[0]
             if c.kind == "tep":

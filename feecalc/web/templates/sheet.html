@@ -1,14 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Hisob varaqasi — ish №{{ job.id }}{% endblock %}
-{% block nav %}<a href="/jobs/{{ job.id }}">Ish №{{ job.id }}</a><a href="/jobs/{{ job.id }}/review">Tekshirish</a><a href="/jobs/{{ job.id }}/calc">Hisob</a><a href="/jobs/{{ job.id }}/sheet"><b>Hisob varaqasi</b></a>{% endblock %}
+{% from "_macros.html" import jobbar %}
+{% block steps %}{{ jobbar(job, 'sheet') }}{% endblock %}
 {% macro val(v) %}{% if v %}{% if v.value is not none %}{{ v.value }}{% if v.unit %} {{ v.unit }}{% endif %}{% else %}—{% endif %} <span class="small muted">[{{ STATUS_LABELS[v.status] }}{% if v.page %}; {{ v.file }}, {{ v.page }}-sah.: «{{ v.source_text }}»{% endif %}{% if v.reason %}; {{ v.reason }}{% endif %}{% for f in v.flags %}; ⚑ {{ f }}{% endfor %}]</span>{% else %}—{% endif %}{% endmacro %}
 {% block content %}
 {% set fin = sheet.finalized %}
-<div class="noprint row" style="justify-content:space-between;margin-bottom:10px">
-  <div>{% if not fin %}<span class="badge not_run">Qoralama — ish hali yakunlanmagan</span>{% endif %}</div>
-  <div><button onclick="window.print()">Chop etish</button> <a class="btn secondary" href="/jobs/{{ job.id }}/sheet.json">JSON yuklab olish</a></div>
+<div class="sheetbar noprint">
+  <div>{% if fin %}<span class="badge ok">Yakunlangan</span>
+       {% else %}<span class="badge not_run">Qoralama — ish hali yakunlanmagan</span> <a href="/jobs/{{ job.id }}/calc">Hisobga qaytish</a>{% endif %}</div>
+  <div class="row"><button type="button" class="btn" onclick="window.print()">Chop etish</button>
+    <a class="btn secondary" href="/jobs/{{ job.id }}/sheet.json">JSON yuklab olish</a>
+    <a class="btn secondary" href="/">Barcha ishlar</a></div>
 </div>
-<div class="card">
+<div class="card paper">
 <h1>Infratuzilma yig'imi hisob varaqasi {% if not fin %}(QORALAMA){% endif %}</h1>
 <p>Ish №{{ sheet.job.id }}: <b>{{ sheet.job.title }}</b>. Yuklagan: {{ sheet.job.created_by }}, {{ sheet.job.created }}.
 {% if fin %}Yakunlagan: <b>{{ fin.by }}</b>, {{ fin.at }}.{% endif %}<br>Asos: {{ sheet.legal_basis }}.</p>
@@ -95,7 +99,7 @@
 <h2>5. Kim nimani o'zgartirgan (audit jurnali)</h2>
 <table>
   <tr><th>Vaqt</th><th>Xodim</th><th>Amal</th><th>Obyekt</th><th>Eski</th><th>Yangi</th><th>Sabab</th></tr>
-  {% for a in sheet.audit %}<tr class="small"><td>{{ a.time }}</td><td>{{ a.user }}</td><td>{{ a.action }}</td><td>{{ a.target }}</td><td>{{ a.old }}</td><td>{{ a.new }}</td><td>{{ a.reason }}</td></tr>{% endfor %}
+  {% for a in sheet.audit %}<tr class="small"><td>{{ a.time }}</td><td>{{ a.user }}</td><td>{{ AUDIT_LABELS.get(a.action, a.action) }}</td><td>{{ a.target }}</td><td>{{ a.old }}</td><td>{{ a.new }}</td><td>{{ a.reason }}</td></tr>{% endfor %}
 </table>
 
 <h2>6. Texnik ma'lumot</h2>

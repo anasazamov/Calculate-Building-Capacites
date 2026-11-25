@@ -64,6 +64,29 @@ narsalar 8-bo'limda.
 Testlar: 160 ta test o'tdi (pytest; to'liq zanjir yozib olingan model javoblari bilan oflayn
 qayta ijro etiladi, GPU kerak emas).
 
+### Interfeys qayta qurildi (25.11.2026)
+
+Birinchi haqiqiy foydalanuvchi ikki joyda qiynaldi: ism kiritilmagani uchun yuklash tugmasi sababsiz
+o'chiq turgan, o'qish paytida esa jarayon ko'rinmagan. Interfeys oddiy xodim nuqtai nazaridan qayta
+tuzildi; hisob yadrosi, tekshiruvlar va o'qish promptlari o'zgarmagan.
+
+- Ism: birinchi kirishda alohida oyna so'raydi va sababini aytadi; hech bir tugma ism tufayli jim o'chmaydi.
+- Yuklash: xulosa (majburiy) va loyiha (ixtiyoriy) uchun alohida maydon, faylni sudrab tashlash,
+  tanlangan fayllar ro'yxati, PDF emasligi joyida aytiladi, kutiladigan vaqt yozilgan.
+- O'qish: bajarilgan so'rovlar soni bo'yicha jarayon chizig'i, o'tgan vaqt, navbatdagi o'rin; tugagach
+  tekshirishga o'zi o'tadi. Xato bo'lsa — oddiy tildagi izoh, to'liq texnik matn yopiq holda yonida.
+- Har bir ish sahifasida besh bosqichli yo'l ko'rsatkichi: Yuklash → O'qish → Tekshirish → Hisob → Varaqa.
+- Tekshirish: sahifa «Sizdan nima kerak» bilan boshlanadi (beshta hajm holati va e'tibor talab qiladigan
+  joylar ro'yxati, har biri manbani ochadi); hajmlar birinchi o'rinda, har birining tarkibi o'z kartasida;
+  qolgan jadvallar yig'iladigan bo'limlarda. 2-model qiymati 1-model qiymati yonida ko'rsatiladi
+  («shunday o'qidi» yoki «boshqacha o'qidi: …»). Hech bir qiymat yoki holat olib tashlanmagan.
+- Hisob: koeffitsiyentlar qaror matni bilan tanlov kartalarida, natija doim ko'rinib turadi,
+  yakunlashdan oldin tasdiq so'raladi.
+- Saqlashdan keyin qisqa tasdiq xabari chiqadi va sahifa o'sha joyga qaytadi; forma xatosida xom JSON
+  o'rniga tushunarli sahifa ochiladi.
+- Tekshirildi: 169 ta test; brauzerda (Chromium) to'liq yo'l namunaviy hujjatlar bilan o'tkazildi.
+  Tekshirilmadi: boshqa brauzerlar, telefon ekrani, chop etilgan qog'oz ko'rinishi.
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi

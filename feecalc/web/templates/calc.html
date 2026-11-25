@@ -1,87 +1,102 @@
 {% extends "base.html" %}
+{% from "_macros.html" import jobbar %}
 {% block title %}Hisob — ish №{{ job.id }}{% endblock %}
-{% block nav %}<a href="/jobs/{{ job.id }}">Ish №{{ job.id }}</a><a href="/jobs/{{ job.id }}/review">Tekshirish</a><a href="/jobs/{{ job.id }}/calc"><b>Hisob</b></a><a href="/jobs/{{ job.id }}/sheet">Hisob varaqasi</a>{% endblock %}
+{% block steps %}{{ jobbar(job, 'calc', view.all_confirmed) }}{% endblock %}
 {% block content %}
-<h1>Hisob — ish №{{ job.id }}: {{ job.title }} {% if locked %}<span class="badge finalized">yakunlangan</span>{% endif %}</h1>
-<p class="small muted">Asos: Vazirlar Mahkamasining 151-son qarori (08.04.2026), 4-ilova. Ti = BHM × ((Hb + Hyu) − (Ha + Ht + Hu)) × Kt × Ko × Kz × Kj × Kkengash.
-Koeffitsiyentlarni xodim tanlaydi — model koeffitsiyent tanlamaydi va pul hisoblamaydi.</p>
+<h1>Yig'imni hisoblash</h1>
+<p class="lead">Koeffitsiyentlarni qaror matniga qarab o'zingiz tanlaysiz — tizim koeffitsiyent tanlamaydi. Hisob o'ng tomonda darhol yangilanadi.</p>
+{% if locked %}<div class="callout ok"><b>Ish yakunlangan.</b> Tanlovlarni ko'rish mumkin, o'zgartirib bo'lmaydi.</div>{% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0">Hajmlar (tekshirish ekranida tasdiqlangan)</h2>
-  <table>
-    <tr><th>Belgi</th><th>Ma'nosi</th><th class="n">Qiymat, m³</th><th>Holat</th></tr>
+  <div class="row between" style="margin-bottom:8px"><h2 style="margin:0">Tasdiqlangan hajmlar</h2><a href="/jobs/{{ job.id }}/review#volumes">Tekshirishga qaytish</a></div>
+  <div class="voltiles">
     {% for code in VOLUME_CODES %}{% set d = view.decisions[code] %}
-    <tr><td><b>{{ code }}</b></td><td>{{ VOLUME_LABELS[code] }}</td><td class="n">{{ d.value | num if d.valid else '—' }}</td>
-      <td>{% if d.valid %}<span class="badge ok">{{ 'tasdiqlangan' if d.decision.status == 'confirmed' else "o'zgartirilgan" }}</span> {{ d.decision.user }}{% if d.decision.reason %} — {{ d.decision.reason }}{% endif %}
-          {% else %}<span class="badge not_run">tasdiqlanmagan</span> <a href="/jobs/{{ job.id }}/review#vol-{{ code }}">tekshirish ekraniga</a>{% endif %}</td></tr>
+    <a class="voltile {{ '' if d.valid else 'missing' }}" href="/jobs/{{ job.id }}/review#vol-{{ code }}">
+      <span class="small muted">{{ code }} — {{ VOLUME_LABELS[code] }}</span>
+      <b>{% if d.valid %}{{ d.value | money }} m³{% else %}tasdiqlanmagan{% endif %}</b></a>
     {% endfor %}
-  </table>
+  </div>
 </div>
 
-<form id="calc" method="post" action="/jobs/{{ job.id }}/finalize" class="card">
-  <h2 style="margin-top:0">Koeffitsiyentlar</h2>
-  {% for group, title in (('kt', 'Kt — qurilish turi'), ('ko', 'Ko — obyekt turi'), ('kz', 'Kz — hududiy zona (aholi soni)'), ('kj', 'Kj — obyekt joylashuvi')) %}
-  <label>{{ title }}</label>
-  <select name="{{ group }}" {% if locked %}disabled{% endif %}>
-    {% for o in FEE_GROUPS[group] %}<option value="{{ o.code }}" {% if calc[group] == o.code %}selected{% endif %}>{{ o.text }}</option>{% endfor %}
-  </select>
-  {% if group == 'kz' %}<span id="kzbox"> qiymat (1–2): <input type="text" name="kz_value" size="6" value="{{ calc.kz_value }}" {% if locked %}disabled{% endif %}></span>{% endif %}
-  {% endfor %}
-  <div class="row" style="margin-top:8px">
-    <div><label>Kengash koeffitsiyenti (0,01–1,5)</label><input type="text" name="k_council" size="8" value="{{ calc.k_council }}" {% if locked %}disabled{% endif %}></div>
-    <div><label>BHM, so'm</label><input type="text" name="bhm" size="12" value="{{ calc.bhm }}" {% if locked %}disabled{% endif %}></div>
+<form id="calc" method="post" action="/jobs/{{ job.id }}/finalize" class="calc"
+      data-confirm-title="Ishni yakunlaysizmi?" data-confirm-ok="Ha, yakunlash"
+      data-confirm="Yakunlangach hajmlar va koeffitsiyentlarni o'zgartirib bo'lmaydi. Hisob varaqasi shu qiymatlar bilan saqlanadi.">
+  <div class="card">
+    {% for group, title in (('kt', 'Kt — qurilish turi'), ('ko', 'Ko — obyekt turi'), ('kz', 'Kz — hududiy zona (aholi soni)'), ('kj', 'Kj — obyekt joylashuvi')) %}
+    <fieldset class="options" {% if locked %}disabled{% endif %}>
+      <legend>{{ title }}</legend>
+      {% for o in FEE_GROUPS[group] %}
+      <label class="option"><input type="radio" name="{{ group }}" value="{{ o.code }}" {% if calc[group] == o.code %}checked{% endif %}>
+        <span>{{ o.text }}{% if group == 'kz' and o.code == '1m+' %}
+          <span id="kzbox"> — qiymat: <input type="text" name="kz_value" size="5" inputmode="decimal" placeholder="1–2" value="{{ calc.kz_value }}" aria-label="Kz qiymati, 1 dan 2 gacha"></span>{% endif %}</span></label>
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+    <div class="row" style="align-items:flex-start">
+      <div class="field"><label for="k_council">Kengash koeffitsiyenti</label>
+        <input id="k_council" type="text" name="k_council" size="8" inputmode="decimal" value="{{ calc.k_council }}" {% if locked %}disabled{% endif %}>
+        <div class="hint">0,01 dan 1,5 gacha. Kengash qarori bo'lmasa — 1.</div></div>
+      <div class="field"><label for="bhm">BHM, so'm</label>
+        <input id="bhm" type="text" name="bhm" size="12" inputmode="numeric" value="{{ calc.bhm }}" {% if locked %}disabled{% endif %}>
+        <div class="hint">Joriy qiymatni tekshirib kiriting. Sukut bo'yicha {{ BHM_DEFAULT | money }} so'm (2026-yil 1-sentabrdan).</div></div>
+    </div>
+    <p class="hint">Asos: Vazirlar Mahkamasining 151-son qarori (08.04.2026), 4-ilova. Ti = BHM × ((Hb + Hyu) − (Ha + Ht + Hu)) × Kt × Ko × Kz × Kj × Kkengash. Koeffitsiyentlar ko'paytmasi 0,01 dan kichik chiqsa, 0,01 olinadi.</p>
+    <div id="industrial"></div>
   </div>
-  <p class="small muted">BHM sukut bo'yicha {{ BHM_DEFAULT | money }} so'm (2026-yil 1-sentabrdan); joriy qiymatni tekshirib kiriting. Koeffitsiyentlar ko'paytmasi 0,01 dan kichik chiqsa 0,01 olinadi.</p>
 
-  <h2>Hisob (jonli)</h2>
-  <div id="out"><span class="muted">Hisoblanmoqda…</span></div>
-  <div style="margin-top:12px" class="noprint">
-    {% if not locked %}<button type="submit" id="finalize" disabled>Yakunlash</button>
-    <span class="small muted" id="why"></span>{% else %}<a class="btn" href="/jobs/{{ job.id }}/sheet">Hisob varaqasi</a>{% endif %}
-  </div>
+  <aside class="result" aria-live="polite">
+    <h2>Hisob</h2>
+    <div id="out"><span class="muted">Hisoblanmoqda…</span></div>
+    {% if not locked %}
+    <button type="submit" class="btn big" id="finalize" disabled>Yakunlash</button>
+    <p class="note" id="why"></p>
+    {% else %}<a class="btn big" href="/jobs/{{ job.id }}/sheet">Hisob varaqasini ochish</a>{% endif %}
+  </aside>
 </form>
 {% endblock %}
 {% block scripts %}
 <script>
-const JOB_ID = {{ job.id }}, STAFF = {{ staff | tojson }}, LOCKED = {{ locked | tojson }};
+const JOB_ID = {{ job.id }}, LOCKED = {{ locked | tojson }};
 const form = document.getElementById('calc'), out = document.getElementById('out');
 const money = (s) => { const [w, f] = String(s).split('.'); return w.replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (f ? ',' + f : ''); };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 async function preview() {
   document.getElementById('kzbox').hidden = form.kz.value !== '1m+';
   const data = new FormData(form);
-  if (LOCKED) for (const e of form.elements) if (e.name) data.set(e.name, e.value);
+  // A finalized job has disabled inputs, which a form does not send: read the saved choices directly.
+  if (LOCKED) for (const e of form.elements) if (e.name && (e.type !== 'radio' || e.checked)) data.set(e.name, e.value);
   const r = await fetch(`/jobs/${JOB_ID}/calc/preview`, { method: 'POST', body: data });
   const j = await r.json();
   const btn = document.getElementById('finalize'), why = document.getElementById('why');
   if (!r.ok) {
-    out.innerHTML = `<div class="err"><b>Xato:</b> ${esc(typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail))}</div>`;
-    if (btn) { btn.disabled = true; why.textContent = 'Xato tuzatilmaguncha yakunlab bo\'lmaydi.'; }
+    out.innerHTML = `<p class="note"><b>Hisoblab bo'lmadi:</b> ${esc(typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail))}</p>`;
+    if (btn) { btn.disabled = true; why.textContent = "Xato tuzatilmaguncha yakunlab bo'lmaydi."; }
     return;
   }
-  let html = '';
+  const box = document.getElementById('industrial');
+  box.innerHTML = '';
   if (j.industrial) {
-    html += `<div class="notice"><b>Sanoat binosi:</b> har qavatning 3 m dan yuqori qismi hajmi — jami ${money(j.industrial.total)} m³. Bu hajm avtomatik ayirilmaydi; qarorni xodim beradi (kerak bo'lsa Hb ni sababi bilan o'zgartiring).`
-      + `<table style="margin-top:6px"><tr><th>Bino</th><th class="n">Hajm, m³</th><th class="n">Qurilish maydoni, m²</th><th class="n">Qavat</th><th class="n">3 m gacha qism, m³</th><th class="n">3 m dan yuqori qism, m³</th></tr>`
-      + j.industrial.rows.map((f) => `<tr><td>${esc(f.name)}</td><td class="n">${f.volume}</td><td class="n">${f.footprint}</td><td class="n">${f.floors}</td><td class="n">${f.within_3m}</td><td class="n">${f.excess}</td></tr>`).join('')
-      + (j.industrial.rows.length ? '' : '<tr><td colspan="6" class="muted">Hajmi va qurilish maydoni ma\'lum bino yo\'q.</td></tr>') + '</table></div>';
+    box.innerHTML = `<div class="callout warn" style="margin-top:12px"><b>Sanoat binosi:</b> har qavatning 3 m dan yuqori qismi hajmi — jami ${money(j.industrial.total)} m³. Bu hajm avtomatik ayirilmaydi; qarorni siz berasiz (kerak bo'lsa Hb ni sababi bilan o'zgartiring).`
+      + `<div class="tablewrap" style="margin-top:8px"><table><tr><th>Bino</th><th class="n">Hajm, m³</th><th class="n">Qurilish maydoni, m²</th><th class="n">Qavat</th><th class="n">3 m gacha qism, m³</th><th class="n">3 m dan yuqori qism, m³</th></tr>`
+      + j.industrial.rows.map((f) => `<tr><td>${esc(f.name)}</td><td class="n">${esc(f.volume)}</td><td class="n">${esc(f.footprint)}</td><td class="n">${esc(f.floors)}</td><td class="n">${esc(f.within_3m)}</td><td class="n">${esc(f.excess)}</td></tr>`).join('')
+      + (j.industrial.rows.length ? '' : '<tr><td colspan="6" class="muted">Hajmi va qurilish maydoni ma\'lum bino yo\'q.</td></tr>') + '</table></div></div>';
   }
   if (j.result) {
     const x = j.result;
-    html += `<div class="formula">${esc(x.formula)}</div>`
-      + (x.floor_applied ? `<div class="flag">Koeffitsiyentlar ko'paytmasi ${x.multiplier_raw} — 0,01 dan kichik, shuning uchun 0,01 olindi.</div>` : '')
-      + `<table style="margin-top:8px;max-width:560px"><tr><td>Hisob hajmi</td><td class="n">${money(x.chargeable_volume)} m³</td></tr>`
-      + `<tr><td>Koeffitsiyentlar ko'paytmasi</td><td class="n">${x.multiplier}</td></tr>`
-      + `<tr><td><b>Yig'im</b></td><td class="n total">${money(x.fee)} so'm</td></tr>`
-      + `<tr><td>20% oldindan to'lov</td><td class="n">${money(x.advance_20)} so'm</td></tr>`
-      + `<tr><td>Qolgan 80%</td><td class="n">${money(x.remainder_80)} so'm</td></tr></table>`;
+    out.innerHTML = `<div class="small" style="color:#b9d0f1">Yig'im summasi</div><div class="fee">${money(x.fee)} so'm</div>`
+      + `<div class="formula">${esc(x.formula)}</div>`
+      + (x.floor_applied ? `<p class="note">Koeffitsiyentlar ko'paytmasi ${esc(x.multiplier_raw)} — 0,01 dan kichik, shuning uchun 0,01 olindi.</p>` : '')
+      + `<dl><dt>Hisob hajmi</dt><dd>${money(x.chargeable_volume)} m³</dd>`
+      + `<dt>Koeffitsiyentlar ko'paytmasi</dt><dd>${esc(x.multiplier).replace('.', ',')}</dd>`
+      + `<dt>20% oldindan to'lov</dt><dd>${money(x.advance_20)} so'm</dd>`
+      + `<dt>Qolgan 80%</dt><dd>${money(x.remainder_80)} so'm</dd></dl>`;
   } else {
-    html += `<div class="flag">Hisoblab bo'lmaydi: tasdiqlanmagan hajmlar — ${j.missing.join(', ')}.</div>`;
+    out.innerHTML = `<p class="note">Hisoblab bo'lmaydi: bu hajmlar hali tasdiqlanmagan — <b>${esc(j.missing.join(', '))}</b>. <a href="/jobs/${JOB_ID}/review#volumes">Tekshirishga o'tish</a></p>`;
   }
-  out.innerHTML = html;
   if (btn) {
-    btn.disabled = !j.result || !STAFF;
-    why.textContent = !j.result ? 'Barcha hajmlar tasdiqlanmaguncha yakunlash o\'chiq.' : (!STAFF ? 'Avval xodim ismini kiriting.' : 'Yakunlangach ish o\'zgartirilmaydi.');
+    btn.disabled = !j.result;
+    why.textContent = j.result ? "Yakunlangach ish o'zgartirilmaydi." : "Barcha hajmlar tasdiqlanmaguncha yakunlab bo'lmaydi.";
   }
 }
 form.addEventListener('input', preview);

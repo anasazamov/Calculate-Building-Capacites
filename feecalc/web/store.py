@@ -22,7 +22,10 @@ CREATE TABLE IF NOT EXISTS job (
     matches TEXT,                    -- JSON: staff pairing of project buildings with conclusion buildings
     calc TEXT,                       -- JSON: coefficient choices
     final TEXT,                      -- JSON: finalized calculation sheet
-    finalized_at TEXT
+    finalized_at TEXT,
+    requests_total INTEGER,          -- reading requests planned for this job
+    requests_done INTEGER,           -- reading requests finished so far
+    started_at TEXT                  -- when the worker started (or restarted) reading
 );
 CREATE TABLE IF NOT EXISTS file (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +64,9 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 """
 
+# Columns added after the first release: (table, column, type). Applied to databases created before them.
+MIGRATIONS = (("job", "requests_total", "INTEGER"), ("job", "requests_done", "INTEGER"), ("job", "started_at", "TEXT"))
+
 
 def now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
@@ -72,6 +78,9 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as c:
             c.executescript(SCHEMA)
+            for table, column, kind in MIGRATIONS:
+                if column not in {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -123,7 +132,7 @@ class Store:
 
     def set_job(self, job_id: int, **fields: object) -> None:
         allowed = {"status", "stage", "error", "result", "permitted_floors", "matches", "calc", "final",
-                   "finalized_at"}
+                   "finalized_at", "requests_total", "requests_done", "started_at"}
         assert fields and set(fields) <= allowed, fields
         values = [json.dumps(v, ensure_ascii=False) if k in ("result", "calc", "final", "matches") and v is not None else v
                   for k, v in fields.items()]
@@ -133,6 +142,18 @@ class Store:
     def unfinished_job_ids(self) -> list[int]:
         with self.connect() as c:
             return [r["id"] for r in c.execute("SELECT id FROM job WHERE status IN ('queued', 'running') ORDER BY id")]
+
+    def jobs_ahead(self, job_id: int) -> int:
+        """Unfinished jobs that were uploaded before this one."""
+        with self.connect() as c:
+            row = c.execute("SELECT COUNT(*) FROM job WHERE status IN ('queued', 'running') AND id < ?", (job_id,))
+            return int(row.fetchone()[0])
+
+    def decision_counts(self) -> dict[int, int]:
+        """Number of volumes with a staff decision, per job (for the job list)."""
+        with self.connect() as c:
+            return {int(r[0]): int(r[1]) for r in
+                    c.execute("SELECT job_id, COUNT(*) FROM volume_decision GROUP BY job_id")}
 
     # ----- staff decisions -----
     def overrides(self, job_id: int) -> dict[str, dict]:

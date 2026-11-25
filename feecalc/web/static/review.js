@@ -48,7 +48,7 @@ async function show(file, page, snippet) {
       ? `Manba parchasi: «${snippet}»`
       : `Parcha sahifada koordinatasi bilan topilmadi: «${snippet}»`;
   } else {
-    el('snippetinfo').textContent = "Jadvaldagi qiymatni bosing — manba parchasi sahifada ajratib ko'rsatiladi.";
+    el('snippetinfo').textContent = 'Qiymatni bosing — manba parchasi sahifada sariq bilan belgilanadi.';
   }
   state.scale = fitScale;
   if (info.rects.length) {
@@ -70,12 +70,22 @@ async function show(file, page, snippet) {
   }
 }
 
-document.addEventListener('click', (e) => {
-  const cell = e.target.closest('.src');
-  if (!cell || e.target.closest('details, form, a, button')) return;
+function open(cell) {
   document.querySelectorAll('.src.active').forEach((c) => c.classList.remove('active'));
   cell.classList.add('active');
   show(cell.dataset.file, cell.dataset.page, cell.dataset.snippet);
+}
+document.addEventListener('click', (e) => {
+  const cell = e.target.closest('.src');
+  // Edit forms and links inside a source cell keep their own behaviour.
+  if (!cell || e.target.closest('details.edit, form, a, button')) return;
+  open(cell);
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('src')) {
+    e.preventDefault();
+    open(e.target);
+  }
 });
 el('file').addEventListener('change', () => show(el('file').value, 1, ''));
 el('page').addEventListener('change', () => show(state.file, el('page').value, ''));

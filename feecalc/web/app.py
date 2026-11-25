@@ -4,22 +4,26 @@ Run: python -m feecalc.web   (listens on 127.0.0.1:8000 only)
 """
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
 import os
-import base64
 import queue
 import re
 import secrets
 import threading
 import traceback
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -42,6 +46,75 @@ def money(v: object) -> str:
 
 def num(v: object) -> str:
     return "" if v is None else fee.fmt_num(Decimal(str(v))).replace(".", ",")
+
+
+AUDIT_LABELS = {
+    "job_created": "ish yaratildi", "job_retried": "o'qish qayta boshlandi", "volume_confirmed": "hajm tasdiqlandi",
+    "volume_changed": "hajm o'zgartirildi", "component_changed": "tarkib qatori o'zgartirildi",
+    "permitted_floors_set": "ruxsat etilgan qavatlar soni kiritildi", "building_matched": "binolar juftlandi",
+    "finalized": "ish yakunlandi",
+}
+ERROR_TITLES = {404: "Sahifa topilmadi", 409: "Bu amalni hozir bajarib bo'lmaydi"}
+
+
+def explain_error(error: str) -> str:
+    """A plain-language hint for a failed job. The full error text is always shown next to it."""
+    if "FileDataError" in error or "Failed to open file" in error:
+        return ("Yuklangan fayl PDF emas yoki buzilgan. Faylni kompyuteringizda ochib tekshiring va "
+                "yangi ish sifatida qayta yuklang.")
+    if "tayyor emas" in error or "ConnectError" in error or "Connection refused" in error:
+        return ("O'qish modeli hozir ishlamayapti. Bir necha daqiqadan keyin «Qayta urinish»ni bosing; "
+                "yordam bermasa, administratorga murojaat qiling.")
+    if "MalformedResponse" in error or "DegenerateOutput" in error or "RepetitionLoop" in error:
+        return "Model buzuq javob qaytardi, shuning uchun o'qish to'xtatildi. «Qayta urinish»ni bosing."
+    return "Kutilmagan xato yuz berdi. «Qayta urinish»ni bosing; takrorlansa, quyidagi texnik ma'lumotni administratorga yuboring."
+
+
+def seconds_since(stamp: str | None) -> int | None:
+    if not stamp:
+        return None
+    return max(0, int((datetime.now() - datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")).total_seconds()))
+
+
+def attention(view: dict) -> list[dict]:
+    """What the reviewer should look at first: values that failed verification, documents or models that disagree.
+
+    Nothing is hidden by this list - every item is also shown in its table; `anchor` is the id of that row.
+    """
+    items: list[dict] = []
+    row_checks: set[str] = set()
+
+    def add(kind: str, text: str, anchor: str, value: dict | None = None) -> None:
+        v = value or {}
+        label = verify.STATUS_LABELS.get(kind) or verify.CHECK_LABELS[kind]
+        items.append({"kind": kind, "label": label, "text": text, "anchor": anchor, "file": v.get("file"),
+                      "page": v.get("page"), "snippet": v.get("source_text") or ""})
+
+    def row(label: str, r: dict, anchor: str) -> None:
+        for side, where in (("project", "loyihada"), ("conclusion", "xulosada")):
+            v = r[side]
+            if v and v["status"] == "conflict":
+                add("conflict", f"{label}: {where} turli joyda turli qiymat yozilgan", anchor, v)
+            if v and v["status"] == "unverified":
+                add("unverified", f"{label}: {where} o'qilgan qiymat manba matni bilan tasdiqlanmadi", anchor, v)
+        if r["check"]:
+            row_checks.add(r["check"]["code"])
+            if r["check"]["status"] == "mismatch":
+                add("mismatch", f"{label}: loyiha va xulosada farq bor", anchor, r["conclusion"] or r["project"])
+        for side, where in (("project", "loyihani"), ("conclusion", "xulosani")):
+            if r[f"agreement_{side}"] == "mismatch":
+                add("mismatch", f"{label}: {where} ikki model turlicha o'qidi", anchor, r[side])
+
+    for i, r in enumerate(view["scalar_rows"], 1):
+        row(r["label"], r, f"f-s{i}")
+    for bi, b in enumerate(view["buildings"], 1):
+        for fi, r in enumerate(b["fields"], 1):
+            row(f"{b['title']} — {r['label']}", r, f"f-b{bi}-{fi}")
+    for c in view["checks"]:
+        if c["status"] in ("mismatch", "warning") and c["code"] not in row_checks:
+            add(c["status"], c["name"], "checks")
+    order = {"conflict": 0, "mismatch": 0, "unverified": 1, "warning": 2}
+    return sorted(items, key=lambda x: order[x["kind"]])
 
 
 def password_ok(header: str, password: str) -> bool:
@@ -73,8 +146,9 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         STATUS_LABELS=verify.STATUS_LABELS, CHECK_LABELS=verify.CHECK_LABELS, SHEET_LABELS=classify.SHEET_LABELS,
         CATEGORY_LABELS=classify.CATEGORY_LABELS, CATEGORIES=classify.CATEGORIES,
         VOLUME_LABELS=volumes.VOLUME_LABELS, VOLUME_CODES=volumes.VOLUME_CODES, STAGES=pipeline.STAGES,
-        JOB_STATUS={"queued": "navbatda", "running": "bajarilmoqda", "ready": "tekshirishga tayyor",
-                    "failed": "xato", "finalized": "yakunlangan"},
+        JOB_STATUS={"queued": "navbatda", "running": "o'qilmoqda", "ready": "tekshirish kutilmoqda",
+                    "failed": "xato bilan to'xtadi", "finalized": "yakunlangan"},
+        AUDIT_LABELS=AUDIT_LABELS,
         AGREEMENT={"match": "mos", "mismatch": "MOS EMAS", "only_1": "faqat 1-model", "only_2": "faqat 2-model",
                    "neither": "ikkalasida yo'q"},
         FEE_GROUPS=fee.GROUPS, BHM_DEFAULT=fee.BHM_DEFAULT,
@@ -88,9 +162,12 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         files = store.files(job_id)
         project = [Path(f["path"]) for f in files if f["role"] == "project"]
         conclusion = [Path(f["path"]) for f in files if f["role"] == "conclusion"]
-        store.set_job(job_id, status="running", stage="ingest", error="")
-        result = pipeline.run_extraction(data_dir / "jobs" / str(job_id), project, conclusion[0],
-                                         lambda stage: store.set_job(job_id, stage=stage))
+        store.set_job(job_id, status="running", stage="ingest", error="", started_at=now(),
+                      requests_total=None, requests_done=None)
+        result = pipeline.run_extraction(
+            data_dir / "jobs" / str(job_id), project, conclusion[0],
+            lambda stage: store.set_job(job_id, stage=stage),
+            lambda done, total: store.set_job(job_id, requests_done=done, requests_total=total))
         store.set_job(job_id, status="ready", stage="done", result=result)
 
     def run_job(job_id: int) -> None:
@@ -158,6 +235,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                             "value": d["value"] if d and not stale else None}
         a["decisions"] = states
         a["all_confirmed"] = all(s["valid"] for s in states.values())
+        a["attention"] = attention(a)
         return a
 
     def calc_inputs(job: dict) -> dict:
@@ -214,25 +292,57 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             "calc": calc, "fee": fee_data, "audit": store.audit_log(job["id"]),
         }
 
+    # ---------- errors: a readable page for a browser, JSON for scripts ----------
+    def error_page(request: Request, status: int, message: str) -> Response:
+        return templates.TemplateResponse(request, "error.html", {
+            "staff": staff(request), "status": status, "message": message,
+            "heading": ERROR_TITLES.get(status, "Ma'lumotni tekshiring")}, status_code=status)
+
+    def wants_html(request: Request) -> bool:
+        return "text/html" in request.headers.get("accept", "")
+
     @app.exception_handler(fee.FeeError)
-    async def fee_error(_request: Request, exc: fee.FeeError) -> JSONResponse:
+    async def fee_error(request: Request, exc: fee.FeeError) -> Response:
+        if wants_html(request):
+            return error_page(request, 422, str(exc))
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
-    def back(job_id: int, anchor: str = "") -> RedirectResponse:
-        return RedirectResponse(f"/jobs/{job_id}/review" + (f"#{anchor}" if anchor else ""), status_code=303)
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        if not wants_html(request):
+            return await http_exception_handler(request, exc)
+        unknown = exc.status_code == 404 and exc.detail == "Not Found"
+        return error_page(request, exc.status_code, "Bunday sahifa yo'q. Manzilni tekshiring." if unknown else str(exc.detail))
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> Response:
+        if not wants_html(request):
+            return await request_validation_exception_handler(request, exc)
+        return error_page(request, 422, "Forma to'liq to'ldirilmagan. Orqaga qaytib, majburiy maydonlarni to'ldiring.")
+
+    def flash(response: Response, message: str) -> Response:
+        """A one-time confirmation shown as a toast on the next page (read and removed by app.js)."""
+        response.set_cookie("flash", quote(message), max_age=60, samesite="lax")
+        return response
+
+    def back(job_id: int, anchor: str = "", message: str = "") -> Response:
+        r = RedirectResponse(f"/jobs/{job_id}/review" + (f"#{anchor}" if anchor else ""), status_code=303)
+        return flash(r, message) if message else r
 
     # ---------- pages ----------
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> Response:
         m1, m2 = llm.model1(), llm.model2()
         return templates.TemplateResponse(request, "index.html", {
-            "jobs": store.jobs(), "staff": staff(request),
+            "jobs": store.jobs(), "staff": staff(request), "decided": store.decision_counts(),
             "model1_up": llm.port_open(m1), "model2_up": llm.port_open(m2)})
 
     @app.post("/whoami")
     def whoami(name: str = Form(...), next: str = Form("/")) -> Response:
         if not next.startswith("/") or next.startswith("//"):
             raise HTTPException(400, "Noto'g'ri manzil")
+        if not name.strip():
+            raise HTTPException(400, "Ism bo'sh bo'lmasin")
         r = RedirectResponse(next, status_code=303)
         r.set_cookie("staff", quote(name.strip()[:80]), max_age=30 * 24 * 3600, httponly=True, samesite="lax")
         return r
@@ -261,12 +371,21 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     def job_page(request: Request, job_id: int) -> Response:
         job = get_job(job_id)
         return templates.TemplateResponse(request, "job.html", {
-            "job": job, "files": store.files(job_id), "staff": staff(request)})
+            "job": job, "files": store.files(job_id), "staff": staff(request), "state": job_state(job)})
+
+    def job_state(job: dict) -> dict:
+        """Everything the progress page shows; polled as JSON while the job is queued or running."""
+        running = job["status"] == "running"
+        return {"status": job["status"], "stage": job["stage"], "error": job["error"],
+                "hint": explain_error(job["error"]) if job["status"] == "failed" else "",
+                "requests_total": job["requests_total"] if running else None,
+                "requests_done": job["requests_done"] if running else None,
+                "elapsed_s": seconds_since(job["started_at"]) if running else None,
+                "ahead": store.jobs_ahead(job["id"]) if job["status"] == "queued" else 0}
 
     @app.get("/jobs/{job_id}/status")
     def job_status(job_id: int) -> dict:
-        job = get_job(job_id)
-        return {"status": job["status"], "stage": job["stage"], "error": job["error"]}
+        return job_state(get_job(job_id))
 
     @app.post("/jobs/{job_id}/retry")
     def retry(request: Request, job_id: int) -> Response:
@@ -277,7 +396,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         store.set_job(job_id, status="queued", stage="", error="")
         store.audit(job_id, user, "job_retried")
         jobs.put(job_id)
-        return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+        return flash(RedirectResponse(f"/jobs/{job_id}", status_code=303), "O'qish qayta navbatga qo'yildi")
 
     @app.get("/jobs/{job_id}/review", response_class=HTMLResponse)
     def review(request: Request, job_id: int) -> Response:
@@ -329,7 +448,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         store.set_job(job_id, matches=matches)
         store.audit(job_id, user, "building_matched", target=view["project_buildings"][project_index],
                     old="" if old is None else str(old), new=str(conclusion_index), reason=why)
-        return back(job_id, "buildings")
+        return back(job_id, "buildings", "Juftlash saqlandi")
 
     @app.post("/jobs/{job_id}/floors")
     def set_floors(request: Request, job_id: int, permitted_floors: str = Form(...)) -> Response:
@@ -339,7 +458,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             raise HTTPException(400, "Ruxsat etilgan qavatlar soni: butun son kiriting")
         store.set_job(job_id, permitted_floors=int(permitted_floors))
         store.audit(job_id, user, "permitted_floors_set", old=str(job["permitted_floors"]), new=permitted_floors.strip())
-        return back(job_id, "vol-Hyu")
+        return back(job_id, "vol-Hyu", "Ruxsat etilgan qavatlar soni saqlandi")
 
     @app.post("/jobs/{job_id}/component/{component_id}")
     def set_component(request: Request, job_id: int, component_id: str, category: str = Form(""),
@@ -369,7 +488,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         store.audit(job_id, user, "component_changed", target=f"{current[0]['name']} [{component_id}]",
                     old=json.dumps(old, ensure_ascii=False), new=json.dumps(data, ensure_ascii=False),
                     reason=data["reason"])
-        return back(job_id, "vol-Hb" if any(r["id"] == component_id for r in view["hb_rows"]) else "components")
+        return back(job_id, f"c-{component_id}", "O'zgarish saqlandi")
 
     @app.post("/jobs/{job_id}/volume/{code}/confirm")
     def confirm_volume(request: Request, job_id: int, code: str) -> Response:
@@ -382,7 +501,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             raise HTTPException(409, f"{code}: taklif yo'q — qiymatni «o'zgartirish» orqali sababi bilan kiriting")
         store.set_decision(job_id, code, "confirmed", proposal, proposal, "", user)
         store.audit(job_id, user, "volume_confirmed", target=code, new=proposal)
-        return back(job_id, f"vol-{code}")
+        return back(job_id, f"vol-{code}", f"{code} tasdiqlandi")
 
     @app.post("/jobs/{job_id}/volume/{code}/change")
     def change_volume(request: Request, job_id: int, code: str, value: str = Form(...),
@@ -398,7 +517,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         store.set_decision(job_id, code, "changed", str(v), view["volumes"][code]["proposal"], why, user)
         store.audit(job_id, user, "volume_changed", target=code, old=old["value"] if old else "",
                     new=str(v), reason=why)
-        return back(job_id, f"vol-{code}")
+        return back(job_id, f"vol-{code}", f"{code} o'zgartirildi")
 
     # ---------- calculation ----------
     @app.get("/jobs/{job_id}/calc", response_class=HTMLResponse)
@@ -441,7 +560,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         sheet = build_sheet(job, view, calc, fee_data)
         sheet["finalized"] = {"by": user, "at": now()}
         store.set_job(job_id, final=sheet, status="finalized", finalized_at=sheet["finalized"]["at"])
-        return RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303)
+        return flash(RedirectResponse(f"/jobs/{job_id}/sheet", status_code=303), "Ish yakunlandi")
 
     def sheet_data(job_id: int) -> tuple[dict, dict]:
         job = get_job(job_id, need_result=True)

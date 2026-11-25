@@ -1,45 +1,103 @@
 {% extends "base.html" %}
-{% block title %}Ish №{{ job.id }}{% endblock %}
+{% from "_macros.html" import jobbar %}
+{% block title %}O'qish — ish №{{ job.id }}{% endblock %}
+{% block steps %}{{ jobbar(job, 'read') }}{% endblock %}
 {% block content %}
-<h1>Ish №{{ job.id }}: {{ job.title }} <span id="status" class="badge {{ job.status }}">{{ JOB_STATUS[job.status] }}</span></h1>
-<div class="card">
-  <h3 style="margin-top:0">Bosqichlar</h3>
-  <ul class="steps" id="steps">{% for code, label in STAGES %}<li data-stage="{{ code }}">{{ label }}</li>{% endfor %}</ul>
-  <p class="small muted">Yuklagan: {{ job.created_by }}, {{ job.created }}. Fayllar:
+{% set with_project = files | selectattr('role', 'equalto', 'project') | list | length > 0 %}
+<section class="card narrow">
+  <div data-when="queued running" hidden>
+    <h1 id="headline">Hujjatlar o'qilmoqda…</h1>
+    <p class="lead" id="lead"></p>
+    <div class="progress" id="progress" role="progressbar" aria-label="O'qish jarayoni"><div class="bar" id="bar"></div></div>
+    <div class="progress-meta"><span id="count"></span><span id="elapsed"></span></div>
+    <ol class="stages" id="stages">{% for code, label in STAGES %}{% if code != 'done' and (with_project or code not in ('sheets', 'project')) %}<li data-stage="{{ code }}">{{ label }}</li>{% endif %}{% endfor %}</ol>
+    <p class="hint">O'qish odatda {{ '2–5' if with_project else '1–2' }} daqiqa oladi. Bu sahifani yopishingiz mumkin — o'qish davom etadi va ish «Barcha ishlar» ro'yxatida turadi.</p>
+  </div>
+  <div data-when="ready" hidden>
+    <div class="bigicon ok">✓</div>
+    <h1>Hujjatlar o'qildi</h1>
+    <p class="lead">Endi o'qilgan qiymatlarni manbasi bilan solishtirib, beshta hajmni tasdiqlang.</p>
+    <a class="btn big" href="/jobs/{{ job.id }}/review">Tekshirishni boshlash →</a>
+  </div>
+  <div data-when="finalized" hidden>
+    <div class="bigicon ok">✓</div>
+    <h1>Ish yakunlangan</h1>
+    <p class="lead">Hisob varaqasi tayyor. Yakunlangan ish o'zgartirilmaydi.</p>
+    <a class="btn big" href="/jobs/{{ job.id }}/sheet">Hisob varaqasini ochish</a>
+    <a class="btn big secondary" href="/jobs/{{ job.id }}/review">Tekshiruvni ko'rish</a>
+  </div>
+  <div data-when="failed" hidden>
+    <div class="bigicon bad">!</div>
+    <h1>O'qish to'xtab qoldi</h1>
+    <p class="lead" id="hint"></p>
+    <p>Tizim hech narsani taxmin qilib to'ldirmadi. Shu paytgacha olingan model javoblari saqlangan — qayta urinishda ular qayta so'ralmaydi.</p>
+    <form method="post" action="/jobs/{{ job.id }}/retry" class="row" style="align-items:center">
+      <button type="submit" class="btn">Qayta urinish</button>
+      <a class="btn secondary" href="/">Barcha ishlar</a>
+    </form>
+    <details class="sub"><summary>Texnik ma'lumot (xatoning to'liq matni)</summary>
+      <div class="body"><pre class="error" id="error"></pre></div></details>
+  </div>
+  <p class="small muted" style="margin:18px 0 0">Yuklagan: {{ job.created_by }}, {{ job.created }}. Fayllar:
   {% for f in files %}{{ 'loyiha' if f.role == 'project' else 'xulosa' }} — {{ f.name }}{{ '; ' if not loop.last }}{% endfor %}</p>
-  <div id="actions" {% if job.status not in ('ready', 'finalized') %}hidden{% endif %}>
-    <a class="btn" href="/jobs/{{ job.id }}/review">Tekshirish ekrani</a>
-    <a class="btn secondary" href="/jobs/{{ job.id }}/calc">Hisob</a>
-    <a class="btn secondary" href="/jobs/{{ job.id }}/sheet">Hisob varaqasi</a>
-  </div>
-  <div id="failed" {% if job.status != 'failed' %}hidden{% endif %}>
-    <p class="err"><b>Ish xato bilan to'xtadi.</b> Xato to'liq holda quyida; tizim hech narsani taxmin qilib to'ldirmadi.</p>
-    <pre class="error" id="error">{{ job.error }}</pre>
-    <form method="post" action="/jobs/{{ job.id }}/retry"><button type="submit">Qayta ishga tushirish</button>
-    <span class="small muted">Saqlangan model javoblari qayta so'ralmaydi.</span></form>
-  </div>
-</div>
+</section>
 {% endblock %}
 {% block scripts %}
 <script>
-const order = {{ STAGES | map(attribute=0) | list | tojson }};
-const labels = {{ JOB_STATUS | tojson }};
+const JOB_ID = {{ job.id }};
+const ORDER = [...document.querySelectorAll('#stages li')].map((li) => li.dataset.stage);
+const byId = (id) => document.getElementById(id);
+const clock = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+let last = null;
+
 function paint(s) {
-  const at = order.indexOf(s.stage);
-  document.querySelectorAll('#steps li').forEach((li, i) => {
-    li.className = (s.status === 'ready' || s.status === 'finalized' || i < at) ? 'done' : (i === at && s.status === 'running' ? 'now' : '');
+  document.querySelectorAll('[data-when]').forEach((box) => { box.hidden = !box.dataset.when.split(' ').includes(s.status); });
+  const bar = byId('bar'), progress = byId('progress');
+  if (s.status === 'queued') {
+    byId('headline').textContent = 'Ish navbatda turibdi';
+    byId('lead').textContent = s.ahead
+      ? `Sizdan oldin ${s.ahead} ta ish o'qilmoqda. Navbat kelishi bilan o'qish o'zi boshlanadi.`
+      : "O'qish hozir boshlanadi.";
+    progress.classList.add('indeterminate');
+    byId('count').textContent = '';
+    byId('elapsed').textContent = '';
+  }
+  if (s.status === 'running') {
+    byId('headline').textContent = "Hujjatlar o'qilmoqda…";
+    byId('lead').textContent = "Tizim hujjatlarni sahifama-sahifa o'qiyapti. Xulosa bitta uzun so'rov bilan o'qiladi, shuning uchun oxirgi qism sekinroq siljiydi.";
+    const total = s.requests_total, done = s.requests_done || 0;
+    progress.classList.toggle('indeterminate', !total);
+    if (total) {
+      bar.style.width = Math.max(4, Math.round((100 * done) / total)) + '%';
+      progress.setAttribute('aria-valuenow', Math.round((100 * done) / total));
+      byId('count').textContent = done >= total ? "So'nggi tekshiruvlar bajarilmoqda…" : `${total} ta so'rovdan ${done} tasi bajarildi`;
+    } else {
+      bar.style.width = '';
+      byId('count').textContent = 'Sahifalar tayyorlanmoqda…';
+    }
+    byId('elapsed').textContent = s.elapsed_s === null ? '' : "O'tgan vaqt: " + clock(s.elapsed_s);
+  }
+  const at = ORDER.indexOf(s.stage);
+  document.querySelectorAll('#stages li').forEach((li, i) => {
+    li.className = i < at ? 'done' : (i === at && s.status === 'running' ? 'now' : '');
   });
-  const b = document.getElementById('status'); b.textContent = labels[s.status]; b.className = 'badge ' + s.status;
-  document.getElementById('actions').hidden = !(s.status === 'ready' || s.status === 'finalized');
-  document.getElementById('failed').hidden = s.status !== 'failed';
-  document.getElementById('error').textContent = s.error;
+  if (s.status === 'failed') {
+    byId('hint').textContent = s.hint;
+    byId('error').textContent = s.error;
+  }
+  // The user was waiting on this page: take them straight to the review.
+  if (last && (last === 'queued' || last === 'running') && s.status === 'ready') {
+    setTimeout(() => { location.href = `/jobs/${JOB_ID}/review`; }, 1200);
+  }
+  last = s.status;
 }
+
 async function poll() {
-  const s = await (await fetch('/jobs/{{ job.id }}/status')).json();
+  const s = await (await fetch(`/jobs/${JOB_ID}/status`)).json();
   paint(s);
   if (s.status === 'queued' || s.status === 'running') setTimeout(poll, 2000);
 }
-paint({status: {{ job.status | tojson }}, stage: {{ job.stage | tojson }}, error: {{ job.error | tojson }}});
+paint({{ state | tojson }});
 poll();
 </script>
 {% endblock %}

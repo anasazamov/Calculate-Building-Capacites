@@ -1,0 +1,26 @@
+{# Shared macros. Imported macros do not see the page context, so everything is passed in. #}
+
+{# The bar under the header on every job page: job name and the five steps of the journey. #}
+{% macro jobbar(job, current, confirmed=false) %}
+{% set ready = job.result is not none %}
+{% set final = job.status == 'finalized' %}
+{% set base = '/jobs/%d' % job.id %}
+<div class="jobbar noprint">
+  <div class="jobname"><span>Ish №{{ job.id }}</span>{{ job.title }}</div>
+  <ol class="steps" aria-label="Ish bosqichlari">
+    {% for key, label, url, done, open in (
+        ('upload', 'Yuklash', '', true, true),
+        ('read', "O'qish", base, ready, true),
+        ('review', 'Tekshirish', base ~ '/review', final or confirmed, ready),
+        ('calc', 'Hisob', base ~ '/calc', final, ready),
+        ('sheet', 'Varaqa', base ~ '/sheet', final, ready)) %}
+    {% set here = key == current %}
+    <li class="{{ 'current' if here else ('done' if done else '') }}{{ ' error' if key == 'read' and job.status == 'failed' }}{{ ' locked' if not open }}"{% if here %} aria-current="step"{% endif %}>
+      {% if url and open and not here %}<a class="step" href="{{ url }}">{% else %}<span class="step"{% if not open %} title="Avval hujjatlar o'qib bo'linishi kerak"{% endif %}>{% endif %}
+        <span class="num">{{ '✓' if done and not here else loop.index }}</span><span class="label">{{ label }}</span>
+      {% if url and open and not here %}</a>{% else %}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endmacro %}

@@ -55,7 +55,8 @@ def test_upload_requires_staff_name_and_pdf(client: TestClient, sample_dir: Path
 def test_full_flow(client: TestClient, sample_dir: Path):
     login(client)
     job = upload(client, sample_dir)
-    assert client.get(f"/jobs/{job}/status").json() == {"status": "ready", "stage": "done", "error": ""}
+    status = client.get(f"/jobs/{job}/status").json()
+    assert (status["status"], status["stage"], status["error"], status["ahead"]) == ("ready", "done", "", 0)
     page = client.get(f"/jobs/{job}/review")
     assert page.status_code == 200
     for text in ("36036", "Наманган", "Samarqand", "Tasdiqlanmagan hajmlar bor", "matnsiz", "Tip-1"):
@@ -183,7 +184,7 @@ def test_conclusion_only_upload(client: TestClient, sample_dir: Path):
     client.app.state.run_job(job)  # type: ignore[attr-defined]
     assert client.get(f"/jobs/{job}/status").json()["status"] == "ready"
     page = unescape(client.get(f"/jobs/{job}/review").text)
-    assert "Loyiha berilmagan" in page and "Tip-1" in page and "88433,2" in page
+    assert "Loyiha berilmagan" in page and "Tip-1" in page and "88 433,2" in page
 
 
 def test_password_gate(tmp_path: Path) -> None:
@@ -200,3 +201,90 @@ def test_password_per_port(tmp_path: Path) -> None:
     c = TestClient(app, follow_redirects=False)  # the test client arrives on port 80
     assert c.get("/", auth=("x", "correct horse battery")).status_code == 401
     assert c.get("/", auth=("x", "local")).status_code in (200, 303)
+
+
+def test_progress_is_reported_while_reading(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    store = client.app.state.store  # type: ignore[attr-defined]
+    saved = store.job(job)
+    assert saved["requests_total"] == saved["requests_done"] > 0 and saved["started_at"]   # every request reported
+    store.set_job(job, status="running", stage="project", requests_done=1)
+    state = client.get(f"/jobs/{job}/status").json()
+    assert (state["requests_done"], state["requests_total"]) == (1, saved["requests_total"]) and state["elapsed_s"] >= 0
+    store.set_job(job, status="queued")
+    queued = client.get(f"/jobs/{job}/status").json()
+    assert queued["ahead"] == 0 and queued["requests_total"] is None
+    assert "O'qish" in unescape(client.get(f"/jobs/{job}").text)
+
+
+def test_failed_job_explains_itself(client: TestClient, sample_dir: Path, monkeypatch):
+    login(client)
+    monkeypatch.setattr(llm, "server_ready", lambda m: False)
+    job = upload(client, sample_dir, replay=False)
+    state = client.get(f"/jobs/{job}/status").json()
+    assert "modeli hozir ishlamayapti" in state["hint"] and "Traceback" in state["error"]
+
+
+def test_browser_gets_a_readable_error_page_and_scripts_get_json(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    html = {"accept": "text/html,application/xhtml+xml"}
+    page = client.post(f"/jobs/{job}/volume/Ht/change", data={"value": "5", "reason": ""}, headers=html)
+    assert page.status_code == 400 and "<h1>" in page.text and "Sababini yozish majburiy" in unescape(page.text)
+    assert client.post(f"/jobs/{job}/volume/Ht/change", data={"value": "5", "reason": ""}).json() == {
+        "detail": "Sababini yozish majburiy"}
+    missing = client.get("/no-such-page", headers=html)
+    assert missing.status_code == 404 and "Sahifa topilmadi" in missing.text
+    assert client.get("/jobs/999", headers=html).status_code == 404
+    assert client.post(f"/jobs/{job}/volume/Ht/change", data={}, headers=html).status_code == 422
+
+
+def test_saving_leaves_a_one_time_confirmation(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    r = client.post(f"/jobs/{job}/volume/Hb/confirm")
+    assert r.status_code == 303 and r.headers["location"].endswith("#vol-Hb")
+    assert "flash=" in r.headers["set-cookie"] and "Hb%20tasdiqlandi" in r.headers["set-cookie"]
+
+
+def test_review_starts_with_what_needs_attention(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    page = unescape(client.get(f"/jobs/{job}/review").text)
+    assert "Sizdan nima kerak" in page and "tasdiqlash kerak" in page and "E'tibor bering" in page
+    assert page.index("Sizdan nima kerak") < page.index('id="vol-Hb"') < page.index('id="fields"')
+    from feecalc import pipeline
+    from feecalc.web.app import attention
+    view = pipeline.assess(client.app.state.store.job(job)["result"])  # type: ignore[attr-defined]
+    items = attention(view)
+    assert any(i["kind"] == "mismatch" and i["anchor"] == "f-s1" for i in items)      # the address differs
+    assert all(f'id="{i["anchor"]}"' in page for i in items)                           # every item has its row
+    assert [i["kind"] in ("conflict", "mismatch") for i in items] == sorted(
+        [i["kind"] in ("conflict", "mismatch") for i in items], reverse=True)            # the serious ones first
+
+
+def test_home_lists_jobs_with_the_next_action(client: TestClient, sample_dir: Path):
+    assert "Hali birorta ish yuklanmagan" in unescape(client.get("/").text)
+    login(client)
+    job = upload(client, sample_dir)
+    client.post(f"/jobs/{job}/volume/Hb/confirm")
+    page = unescape(client.get("/").text)
+    assert "Davom etish" in page and "5 ta hajmdan 1 tasi tasdiqlangan" in page and f'href="/jobs/{job}/review"' in page
+
+
+def test_old_database_gets_the_new_columns(tmp_path: Path):
+    import sqlite3
+    from feecalc.web.store import Store
+    db = tmp_path / "feecalc.db"
+    with sqlite3.connect(db) as c:
+        c.execute("CREATE TABLE job (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created TEXT NOT NULL, "
+                  "created_by TEXT NOT NULL, status TEXT NOT NULL, stage TEXT NOT NULL DEFAULT '', "
+                  "error TEXT NOT NULL DEFAULT '', result TEXT, permitted_floors INTEGER, matches TEXT, calc TEXT, "
+                  "final TEXT, finalized_at TEXT)")
+        c.execute("INSERT INTO job (title, created, created_by, status) VALUES ('eski', '2026-11-24 10:00:00', 'A', 'ready')")
+    store = Store(db)
+    job = store.job(1)
+    assert job is not None and job["title"] == "eski" and job["requests_total"] is None
+    store.set_job(1, requests_total=7, requests_done=2)
+    assert store.job(1)["requests_total"] == 7 and store.jobs_ahead(1) == 0
