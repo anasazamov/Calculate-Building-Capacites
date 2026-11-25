@@ -149,7 +149,7 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         "prompt_version": extract.PROMPT_VERSION,
         "project": project, "conclusion": conclusion,
         "category_suggestions": suggestions, "level_marks": marks, "warnings": warnings,
-        "object": object_description(conclusion_pages), "plans": read_plans(files),
+        "object": object_description(conclusion_pages), "plans": read_plans(files), "plan_index": read_plan_index(files),
         "timing": {k: round(v, 2) for k, v in timing.items()},
     }
 
@@ -165,6 +165,19 @@ def read_plans(files: list[dict]) -> list[dict]:
             if (p["sheet"] or {}).get("kind") == "floor_plan" and not p["textless"]:
                 rooms = plans.plan_rooms(Path(f["path"]), p["number"])
                 out.append({"file": f["name"], "page": p["number"], "rooms": rooms, **plans.summary(rooms)})
+    return out
+
+
+def read_plan_index(files: list[dict]) -> list[dict]:
+    """Which storeys every plan sheet of the project shows (from the title blocks; see plans.sheet_storeys)."""
+    out: list[dict] = []
+    for f in files:
+        if f["role"] != "project":
+            continue
+        for page in ingest.ingest(Path(f["path"])):
+            found = None if page.textless else plans.sheet_storeys(ingest.stamp_text(page))
+            if found:
+                out.append({"file": f["name"], "page": page.number, **found})
     return out
 
 

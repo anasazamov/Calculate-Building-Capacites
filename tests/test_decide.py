@@ -168,3 +168,55 @@ def test_common_area_given_for_the_whole_building_uses_the_typical_height():
     technical = {**whole, "category": "Ht"}
     ht = decide.decide_category({**view, "components": [technical]}, "Ht", residential=True)
     assert ht["value"] == "0" and "qo'shilmadi" in ht["assumptions"][0]
+
+
+def plan_view(rooms: list[dict], index: list[dict]) -> dict:
+    def field(name: str, n: str) -> dict:
+        return {"field": name, "project": number(n), "conclusion": None}
+    block = {"title": "Blok 1", "fields": [field("volume", "5358.3"), field("volume_above_ground", "4392.0"),
+                                           field("volume_below_ground", "966.3"), field("footprint_area", "292.8"), field("floors", "5")]}
+    return {"buildings": [block], "plan_index": index, "components": rooms, "heights": [],
+            "volumes": {c: {"proposal": None, "formula": "", "notes": []} for c in ("Ha", "Ht", "Hu")}}
+
+
+def room(name: str, area: str, page: int, category: str, method: str = "dictionary") -> dict:
+    return {"origin": "room", "file": "a.pdf", "page": page, "name": name, "area": area, "category": category,
+            "category_method": method, "included": True, "volume": "1", "level_kind": "unknown"}
+
+
+INDEX = [{"file": "a.pdf", "page": 6, "block": "1", "level": "basement", "floors": []},
+         {"file": "a.pdf", "page": 7, "block": "1", "level": "floors", "floors": [1]},
+         {"file": "a.pdf", "page": 8, "block": "1", "level": "floors", "floors": [2, 3, 4]},
+         {"file": "a.pdf", "page": 9, "block": "1", "level": "floors", "floors": [5]}]
+
+
+def test_storey_heights_follow_the_projects_own_volumes():
+    basement, storey, basis = decide.storey_heights(plan_view([], INDEX))
+    assert (basement, storey) == (Decimal("3.30"), Decimal("3.00")) and "966.3" in basis
+
+
+def test_deductions_from_storey_plans_count_each_storey_once():
+    rooms = [room("ЛЕСТНИЧНАЯ КЛЕТКА", "16.5", 6, "Hu"), room("ЛЕСТНИЧНАЯ КЛЕТКА КОРИДОР", "34.0", 7, "Hu"),
+             room("ЛЕСТНИЧНАЯ КЛЕТКА КОРИДОР", "29.1", 8, "Hu"), room("ЛЕСТНИЧНАЯ КЛЕТКА КОРИДОР", "29.1", 9, "Hu"),
+             room("УЗЕЛ В ВОД", "19.4", 6, "Ht"), room("ТЕХ. ПОМЕЩЕНИЯ", "5.5", 7, "Ht"),
+             room("ПОДВАЛЬНОЕ ПОМЕЩЕНИЯ", "52.7", 6, "Ht", method="model"),          # a suggested category is not counted
+             room("ЛЕСТНИЧНАЯ КЛЕТКА КОРИДОР", "34.0", 11, "Hu")]                      # a floor-finish sheet repeats floor 1: not a plan
+    view = plan_view(rooms, INDEX)
+    hu = decide.decide_category(view, "Hu", residential=True)
+    assert hu["value"] == "505.65"                 # 16.5 x 3.3 + (34.0 + 29.1 x 3 + 29.1) x 3.0
+    ht = decide.decide_category(view, "Ht", residential=True)
+    assert ht["value"] == "80.52" and any("model taxmin qilgan" in a and "ПОДВАЛЬНОЕ" in a for a in ht["assumptions"])
+    assert decide.decide_category(view, "Ha", residential=True)["value"] == "0"
+
+
+def test_plans_with_a_missing_storey_are_not_extrapolated():
+    view = plan_view([room("ЛЕСТНИЧНАЯ КЛЕТКА", "30", 7, "Hu")], [INDEX[1], INDEX[3]])     # storeys 1 and 5 only
+    assert decide.plan_volume(view, "Hu") is None
+
+
+def test_a_category_suggested_by_the_model_is_never_deducted_by_itself():
+    row = {"origin": "breakdown", "file": "a.pdf", "page": 3, "name": "Общая площадь", "area": "1944.2", "category": "Hu",
+           "category_method": "model", "included": True, "volume": "5249.34", "level_kind": "unknown"}
+    view = {"components": [row], "heights": [], "volumes": {"Hu": {"proposal": "5249.34", "formula": "5249.34", "notes": []}}}
+    out = decide.decide_category(view, "Hu", residential=True)
+    assert out["value"] == "0" and "model taxmin qilgan" in out["assumptions"][0]

@@ -166,6 +166,27 @@ solishtirish) ushlaydi. Shu sababli agent rejimi asosiy yo'l sifatida tavsiya qi
   Cheklov: xulosa hamon majburiy; loyihasiz ishda xulosani tekshirib bo'lmaydi; loyihadan faqat tizim o'qiydigan
   ko'rsatkichlar solishtiriladi.
 
+### Xato va tuzatish: chegirmalar (Ht, Hu) noto'g'ri hisoblangan (25.11.2026)
+
+Buyurtmachi yuklagan ishda (5 qavatli ikki blokli turar joy) tizim Hb ni to'g'ri (14 412,4), Ht va Hu ni esa xato
+chiqardi: Ht = 5 535,99 va Hu = 6 340,68 (to'g'risi 169,14 va 1 148,10). Yig'im shu sabab keskin kam chiqdi va ish
+shu holda tasdiqlangan edi. Sabablari — ikkalasi ham mening tavsiya qoidalarimdagi xato:
+
+1. Toifasini model taxmin qilgan qatorlar («Общая площадь» → Hu, «Подвальное помещение» → Ht) avtomatik chegirmaga
+   qo'shilgan. Qat'iy qoidada ular «xodim tasdiqlashi kerak» edi; tavsiya qatlami bu belgini e'tiborsiz qoldirgan.
+2. Bir xil xonalar bir necha varaqdan (yig'ma jadval, qavat rejasi, pollar rejasi) takror sanalgan.
+
+Tuzatish (`feecalc/decide.py`, `feecalc/plans.py`): (a) model taxmin qilgan toifa hech qachon o'zi chegirmaga
+kirmaydi — nomma-nom ko'rsatiladi; (b) loyiha ko'rsatkichlar jadvalida shu toifa qatori bo'lmasa, chegirma qavat
+rejalaridan hisoblanadi: reja varag'i sarlavhasidan blok va qavatlar olinadi («План 2....4 го этажа» → 3 qavat),
+har xona maydoni × shu reja qamragan qavatlar soni × qavat balandligi; pollar rejasi, chordoq va tom rejalari
+sanalmaydi; biror qavatning rejasi bo'lmasa usul qo'llanmaydi; (c) balandliklar loyihadagi hajmlardan olinadi
+(yer osti hajmi ÷ qurilish maydoni; yer usti hajmi ÷ maydon ÷ qavatlar). Shu ishda natija: Ht = 169,14, Hu = 1 148,1 —
+buyurtmachi bergan to'g'ri hisob bilan bir xil. Beshta namunada natijalar o'zgarmadi (284459: 168,32 va 3 335,8).
+Yakunlangan ishni tuzatish uchun «Qayta ochish» amali qo'shildi (sababi bilan, audit jurnalida).
+Cheklov: usul bitta haqiqiy ishda tekshirildi; reja sarlavhalari boshqacha yozilgan albomlarda ishlamasligi mumkin
+(u holda tizim eski yo'lga qaytadi va hisoblanmagan qatorlarni sanab ko'rsatadi).
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi

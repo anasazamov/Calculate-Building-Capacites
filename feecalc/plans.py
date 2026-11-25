@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pymupdf
 
-from . import classify
+from . import classify, verify
 from .ingest import MUPDF_LOCK
 
 _AREA = re.compile(r"^(\d{1,3}[.,]\d{1,2})(?:м²|м2|m²|m2|²)$")             # "9.2²" (the unit letter forgotten) occurs
@@ -126,3 +126,32 @@ def summary(rooms: list[dict]) -> dict:
     return {"count": len(rooms), "unnamed": len(rooms) - len(named),
             "area": str(sum((Decimal(r["area"]) for r in named), Decimal(0))),
             "by_category": {k: str(v) for k, v in sorted(totals.items())}}
+
+
+# ---------- which storeys a plan sheet shows (from its title block) ----------
+_BLOCK = re.compile(r"blok\W{0,3}(\d+)\W{0,2}(?!\s*,)")
+_SKIP = re.compile(r"plan\s+polov|pollar\s+rejasi|cherdak|chordoq|krovl|tom\s+rejasi|fundament|poydevor|perekryt|potolk")
+_BASEMENT = re.compile(r"plan\s+podval|plan\s+tsokol|plan\s+texpodpol|yertola\s+(?:qavati\s+)?rejasi|podval\w*\s+rejasi")
+_RANGE = re.compile(r"plan\s+(\d+)\s*(?:\.{2,}|…|-|–|—|\s+i\s+|\s+va\s+)\s*(\d+)\s*-?\s*(?:go|y|chi)?\s*(?:etaj|qavat)")
+_SINGLE = re.compile(r"plan\s+(\d+)\s*-?\s*(?:go|y|chi)?\s*(?:etaj|qavat)|(\d+)\s*-?\s*qavat\s+rejasi")
+
+
+def sheet_storeys(title: str) -> dict | None:
+    """What a plan sheet covers, read from its title block: {"block", "level": basement|floors, "floors": [...]}.
+
+    None for anything that is not a storey plan (floor finishes, attic, roof): those repeat rooms or show none.
+    """
+    t = verify.transliterate(title)
+    if _SKIP.search(t):
+        return None
+    block = _BLOCK.search(t)
+    base = {"block": block.group(1) if block else ""}
+    if _BASEMENT.search(t):
+        return {**base, "level": "basement", "floors": []}
+    m = _RANGE.search(t)
+    if m and int(m.group(1)) < int(m.group(2)) <= 60:
+        return {**base, "level": "floors", "floors": list(range(int(m.group(1)), int(m.group(2)) + 1))}
+    m = _SINGLE.search(t)
+    if m:
+        return {**base, "level": "floors", "floors": [int(m.group(1) or m.group(2))]}
+    return None

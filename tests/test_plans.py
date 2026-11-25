@@ -44,3 +44,13 @@ def test_a_sheet_without_labels_gives_nothing(tmp_path: Path):
     doc.new_page().insert_text((60, 80), "Eksplikatsiya: 1 Yotoqxona 18.0", fontsize=10)
     doc.save(str(tmp_path / "table.pdf"))
     assert plans.plan_rooms(tmp_path / "table.pdf", 1) == [] and plans.summary([])["count"] == 0
+
+
+def test_storeys_of_a_plan_sheet_come_from_its_title():
+    assert plans.sheet_storeys("БЛОК (1) РП 3 ПЛАН ПОДВАЛА") == {"block": "1", "level": "basement", "floors": []}
+    assert plans.sheet_storeys("БЛОК (2) РП 25 ПЛАН 2....4 ГО ЭТАЖА") == {"block": "2", "level": "floors", "floors": [2, 3, 4]}
+    assert plans.sheet_storeys("ПЛАН 1 ГО ЭТАЖА") == {"block": "", "level": "floors", "floors": [1]}
+    assert plans.sheet_storeys("План 2-16 этажей")["floors"] == list(range(2, 17))
+    assert plans.sheet_storeys("5-qavat rejasi")["floors"] == [5]
+    for other in ("БЛОК (1) РП 7 ПЛАН ПОЛОВ", "ПЛАН ЧЕРДАКА", "План кровли", "Разрез 1-1", "Общие данные"):
+        assert plans.sheet_storeys(other) is None

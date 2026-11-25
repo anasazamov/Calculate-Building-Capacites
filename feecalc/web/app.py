@@ -56,7 +56,7 @@ AUDIT_LABELS = {
     "job_created": "ish yaratildi", "job_retried": "o'qish qayta boshlandi", "volume_confirmed": "hajm tasdiqlandi",
     "volume_changed": "hajm o'zgartirildi", "component_changed": "tarkib qatori o'zgartirildi",
     "permitted_floors_set": "ruxsat etilgan qavatlar soni kiritildi", "building_matched": "binolar juftlandi",
-    "finalized": "ish yakunlandi",
+    "finalized": "ish yakunlandi", "reopened": "ish qayta ochildi",
 }
 ERROR_TITLES = {404: "Sahifa topilmadi", 409: "Bu amalni hozir bajarib bo'lmaydi"}
 GROUPS = ("kt", "ko", "kz", "kj")
@@ -312,6 +312,17 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             plan_cache[job["id"]] = pipeline.read_plans(result["files"]) if present else []
         return plan_cache[job["id"]]
 
+    index_cache: dict[int, list[dict]] = {}
+
+    def plan_index(job: dict) -> list[dict]:
+        result = job["result"]
+        if "plan_index" in result:
+            return result["plan_index"]
+        if job["id"] not in index_cache:
+            present = all(Path(f["path"]).exists() for f in result["files"])
+            index_cache[job["id"]] = pipeline.read_plan_index(result["files"]) if present else []
+        return index_cache[job["id"]]
+
     def saved_calc(job: dict) -> dict:
         saved = job["calc"] or {}
         return {} if saved == OLD_DEFAULT_CALC else saved
@@ -319,6 +330,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     def build_view(job: dict) -> dict:
         """Assessment, the system's recommendation, and the state of staff decisions."""
         a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["matches"])
+        a["plan_index"] = plan_index(job)
         rec = decide.recommend(a, description(job), load_reference(), job["permitted_floors"],
                                saved_calc(job).get("ko") or None)
         a["recommendation"] = rec
@@ -710,6 +722,19 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             store.add_file(job_id, role, f.filename or safe, path)
         jobs.put(job_id)
         return job_id
+
+    @app.post("/jobs/{job_id}/reopen")
+    def reopen(request: Request, job_id: int, reason: str = Form("")) -> Response:
+        """Take a finalized job back for correction. The earlier sheet stays in the audit log by its sum."""
+        user = require_staff(request)
+        job = get_job(job_id, need_result=True)
+        if job["status"] != "finalized":
+            raise HTTPException(409, "Faqat yakunlangan ishni qayta ochish mumkin")
+        why = reason_field(reason)
+        old = ((job["final"] or {}).get("fee") or {}).get("result") or {}
+        store.audit(job_id, user, "reopened", old=str(old.get("fee", "")), reason=why)
+        store.set_job(job_id, status="ready", final=None, finalized_at=None)
+        return flash(RedirectResponse(f"/jobs/{job_id}/proposal", status_code=303), "Ish qayta ochildi")
 
     @app.get("/jobs/{job_id}/proposal", response_class=HTMLResponse)
     def proposal_page(request: Request, job_id: int) -> Response:

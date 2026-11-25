@@ -288,19 +288,80 @@ def typical_height(heights: list[dict]) -> tuple[Decimal, str] | None:
     return (value, label) if floors * 2 > total else None
 
 
-def decide_category(view: dict, code: str, residential: bool) -> dict:
-    """Ha / Ht / Hu. Where the strict proposal is incomplete, the rows with a known volume are summed
-    and the rest is named; an under-stated deduction only raises the fee, never lowers it.
+def storey_heights(view: dict) -> tuple[Decimal, Decimal, str] | None:
+    """(basement height, storey height, basis) consistent with the volumes the project states for one block:
+    below-ground volume / built-up area, and above-ground volume / built-up area / storeys."""
+    candidates = []
+    for b in view.get("buildings") or []:
+        f = {x["field"]: _number(x["project"]) for x in b["fields"]}
+        if all(f.get(k) for k in ("volume", "volume_above_ground", "volume_below_ground", "footprint_area", "floors")):
+            candidates.append((f["volume"], f, str(b["title"])))
+    if not candidates:
+        return None
+    _, f, title = min(candidates, key=lambda c: c[0])             # the smallest: one block rather than their sum
+    basement = (f["volume_below_ground"] / f["footprint_area"]).quantize(Decimal("0.01"))
+    storey = (f["volume_above_ground"] / f["footprint_area"] / f["floors"]).quantize(Decimal("0.01"))
+    return basement, storey, (f"balandliklar loyihadagi hajmlardan ({title[:60]}): yer osti {fmt_num(f['volume_below_ground'])} ÷ "
+                              f"{fmt_num(f['footprint_area'])} = {fmt_num(basement)} m; yer usti {fmt_num(f['volume_above_ground'])} ÷ "
+                              f"{fmt_num(f['footprint_area'])} ÷ {fmt_num(f['floors'])} qavat = {fmt_num(storey)} m")
 
-    One gap is closed by a stated assumption: a common-use area given for the whole building (no
-    level) is multiplied by the storey height that holds for most storeys."""
+
+def plan_volume(view: dict, code: str) -> dict | None:
+    """Ha / Ht / Hu from the storey plans: every room of the category on a plan sheet, times the storeys
+    that sheet shows, times the storey height. Sheets that repeat the same storeys (floor finishes) are
+    not plan sheets here, so nothing is counted twice. None when the plans cannot carry the calculation."""
+    index = {(s["file"], s["page"]): s for s in view.get("plan_index") or []}
+    heights = storey_heights(view)
+    rooms = [c for c in view["components"] if c["origin"] == "room" and (c.get("file"), c.get("page")) in index
+             and c["area"] is not None]
+    if not index or not heights or not rooms:
+        return None
+    basement, storey, basis = heights
+    blocks: dict[str, set[int]] = {}
+    for s in index.values():
+        blocks.setdefault(s["block"], set()).update(s["floors"])
+    if any(not floors or floors != set(range(1, max(floors) + 1)) for floors in blocks.values()):
+        return None                                                # a storey without its plan: do not extrapolate
+    parts: list[tuple[Decimal, str]] = []
+    for c in rooms:
+        if c["category"] != code or not str(c["category_method"]).startswith("dictionary"):
+            continue
+        sheet = index[(c["file"], c["page"])]
+        count, height = (1, basement) if sheet["level"] == "basement" else (len(sheet["floors"]), storey)
+        volume = Decimal(c["area"]) * count * height
+        where = "yerto'la" if sheet["level"] == "basement" else (f"{sheet['floors'][0]}–{sheet['floors'][-1]}-qavatlar" if count > 1 else f"{sheet['floors'][0]}-qavat")
+        parts.append((volume, f"{sheet['block'] + '-blok, ' if sheet['block'] else ''}{where}: {c['name']} {fmt_num(Decimal(c['area']))} m²"
+                              + (f" × {count} qavat" if count > 1 else "") + f" × {fmt_num(height)} m = {fmt_num(volume)}"))
+    total = sum((v for v, _ in parts), Decimal(0))
+    suggested = [c for c in rooms if c["category"] == code and not str(c["category_method"]).startswith("dictionary")]
+    assumptions = [f"Qavat rejalari bo'yicha hisoblandi ({len(index)} ta reja varag'i, {len(blocks)} ta blok); {basis}"]
+    assumptions += [text for _, text in parts]
+    if suggested:
+        names = sorted({str(c["name"]) for c in suggested})
+        assumptions.append(f"{len(suggested)} ta xonaning toifasini model taxmin qilgan, lug'atda yo'q — qo'shilmadi: " + "; ".join(names[:4]))
+    return _volume(total, (" + ".join(fmt_num(v) for v, _ in parts) + f" = {fmt_num(total)} m³") if parts else "0", assumptions, False)
+
+
+def decide_category(view: dict, code: str, residential: bool) -> dict:
+    """Ha / Ht / Hu. Only rows whose category comes from the dictionary are counted; a category that the
+    model merely suggested stays out until a person confirms it. Order of trust:
+    1. the project's own indicator table, when it has a row of this category;
+    2. the storey plans (rooms x storeys x storey height), when they cover every storey;
+    3. the room tables as read, with whatever cannot be computed named and left out."""
     strict = view["volumes"][code]
     if code == "Hu" and not residential:
         return _volume(Decimal(0), "0", ["Hu faqat turar joy binosining umumiy foydalanishdagi qismiga tegishli "
                                          "(4-ilova, hisoblash mexanizmi); obyektda turar joy binosi aniqlanmadi — 0"], False)
-    if strict["proposal"] is not None:
+    all_rows = [c for c in view["components"] if c["category"] == code and c["included"]]
+    own = [c for c in all_rows if str(c["category_method"]) != "model"]
+    suggested = [c for c in all_rows if str(c["category_method"]) == "model"]
+    from_table = [c for c in own if c["origin"] == "breakdown"]
+    if not from_table:
+        by_plans = plan_volume(view, code)
+        if by_plans is not None:
+            return by_plans
+    if strict["proposal"] is not None and not suggested:
         return _volume(Decimal(strict["proposal"]), strict["formula"], [], True)
-    own = [c for c in view["components"] if c["category"] == code and c["included"]]
     parts = [Decimal(c["volume"]) for c in own if c["volume"] is not None]
     missing = [c for c in own if c["volume"] is None]
     assumptions: list[str] = []
@@ -320,6 +381,10 @@ def decide_category(view: dict, code: str, residential: bool) -> dict:
         names = "; ".join(str(c["name"]) for c in missing[:4]) + (" va boshqalar" if len(missing) > 4 else "")
         assumptions.append(f"{len(missing)} ta qator hajmi aniqlanmadi (balandlik yoki maydon yo'q) va qo'shilmadi: {names}. "
                            "Chegirma kamroq olindi — yig'im kamaymaydi")
+    if suggested:
+        names = sorted({str(c["name"]) for c in suggested})
+        assumptions.append(f"{len(suggested)} ta qatorning toifasini model taxmin qilgan, lug'atda yo'q — chegirmaga qo'shilmadi: "
+                           + "; ".join(names[:4]) + ". To'g'ri bo'lsa, tekshirish sahifasida toifasini tasdiqlang")
     total = sum(parts, Decimal(0))
     formula = (" + ".join(fmt_num(x) for x in parts) + f" = {fmt_num(total)} m³") if parts else "0"
     return _volume(total, formula, assumptions, False)
