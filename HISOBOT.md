@@ -87,6 +87,53 @@ tuzildi; hisob yadrosi, tekshiruvlar va o'qish promptlari o'zgarmagan.
 - Tekshirildi: 169 ta test; brauzerda (Chromium) to'liq yo'l namunaviy hujjatlar bilan o'tkazildi.
   Tekshirilmadi: boshqa brauzerlar, telefon ekrani, chop etilgan qog'oz ko'rinishi.
 
+### Tizim tavsiya beradi, xodim tasdiqlaydi (25.11.2026)
+
+Buyurtmachi talabi o'zgardi: inspektorga ish qolmasligi, xodim faqat tasdiqlab shartnoma chiqarishi kerak.
+Bu TASK.md 2.1-qoidasidan («model koeffitsiyent tanlamaydi») ongli chetlashish: endi tizim tavsiya qiladi,
+qaror tasdiqlagan xodimniki. Pulni hamon faqat kod (Decimal) hisoblaydi; tavsiyalar til modeli emas, kod
+qoidalari bilan chiqariladi va har birining asosi yoziladi.
+
+- **Hajmlar** (`feecalc/decide.py`): beshtasi uchun ham qiymat taklif qilinadi. Qat'iy taklif bo'lmagan joyda
+  aytilgan qoida qo'llanadi va «taxmin» deb yoziladi: loyiha va xulosa farq qilsa — xulosa (4-ilova, 11-band);
+  sanoat obyektida Hb har qavatning 3 m gacha qismi; ruxsat etilgan qavatlar soni noma'lum bo'lsa Hyu = 0;
+  butun bino bo'yicha berilgan umumiy foydalanish maydoni ko'pchilik qavatlar balandligiga ko'paytiriladi;
+  hajmi aniqlanmagan chegirma qatorlari qo'shilmaydi (yig'im kamaymaydi) va nomma-nom sanaladi.
+- **Koeffitsiyentlar**: Kt — xulosadagi qurilish turidan; Ko — obyekt nomidagi so'zlardan; Kz — manzildan
+  (Samarqand shahri 0,5; viloyatning boshqa aholi punktlari 0,05; ma'lumotnomada boshqacha kiritish mumkin);
+  Kj — xodimlar yuritadigan markaziy qatnov ko'chalari ro'yxatidan. Ro'yxat bo'lmasa Kj tavsiya qilinmaydi.
+- **Istisnolar** («yakka tartibdagi», «xususiy maktab», diniy bino va h.k.) ko'rsatiladi, lekin qo'llanmaydi.
+- **Bir marta tasdiqlash**: «Tizim tavsiyasi» sahifasi, so'ng hisoblash ma'lumotnomasi Word'da (summa so'z bilan);
+  tashkilotning o'z shartnoma shabloni yuklansa, u to'ldiriladi.
+- **Bilimlar bazasi** (`feecalc/knowledge.py`, `scripts/sync_norms.py`): lex.uz dan 11 hujjat, 6 424 band
+  (VM 151, PQ-244, VM 526, Kengash qarori 31.10.2025, PF-115, SHNQ 2.08.01-24, 2.08.02-24, 2.09.02-23,
+  2.07.01-23, 2.05.07-24, QMQ 2.01.02-04), serverda SQLite FTS5 da; so'rovlarda loyiha mazmuni yuborilmaydi.
+  gov.uz dan hech narsa olinmadi (ro'yxati brauzer orqali yuklanadi).
+- **ShNQ tekshiruvi** (`feecalc/norms.py`): hozircha faqat tizim o'qiydigan raqamlar bilan tekshirib bo'ladigan
+  talablar — xona/qavat balandligi (turar joy 2,7 m, jamoat 3,0 m, ishlab chiqarish 3 m), qurilish hajmi =
+  yer usti + yer osti, 16 qavat chegarasi, ko'kalamzor ulushi. Har qoida band matnini so'zma-so'z ko'rsatadi va
+  banddagi raqam o'zgarsa o'zini o'chiradi. Bu maslahat; yong'in xavfsizligi, insolyatsiya, masofalar va
+  boshqa talablar tekshirilmaydi.
+
+Namunalarda (saqlangan o'qishlar): beshala obyektda hajmlar uchun to'liq tavsiya chiqdi; 284459 da Ht = 168,32 va
+Hu = 3 335,8 (TASK.md nazorat qiymatlari). Imzolangan uch shartnoma bilan farqlar: ikkitasida xodim
+«rekonstruksiya» olgan, xulosada «Yangi qurilish»; 302704 da tizim Hb = 52 043,7 (barcha bloklar × 3 m), shartnomada
+2 265; 302030 da tizim hojatxona hajmini xulosadan (10,2), xodim loyihadan (251,37) olgan.
+
+**Chizmalarni o'qish — o'lchandi, ulanmadi.** Ikkala model rasm qabul qiladi. Ko'rsatkichlar jadvali: Qwen butun
+sahifa 2382×1684 da 41/41, Gemma 2×2 bo'lakda 41/41; past aniqlikda ishonchli ko'rinadigan xato sonlar
+(34619.3 → 3419.3) chiqadi va model «o'qib bo'lmadi» demaydi. Qavat rejasi (48 xona yozuvi): matn qatlami +
+koordinata — 48/48 modelsiz; rasm orqali eng yaxshisi 46/48, bitta xatoda ikki model bir xil adashdi
+(7.0 → 1.0). Xulosa: matn qatlami bor sahifada rasm kerak emas; rasmdan o'qilgan qiymat xodim tasdig'isiz
+qabul qilinmasligi kerak. Kesim varag'i rasm orqali o'lchanmadi (server qayta ishga tushdi).
+
+**Huquqiy savollar (bazadagi matnlardan, yurist qarori kerak):** (1) VM 526 2-ilovasi (faqat Samarqand, amalda)
+boshqa tartib beradi: BHMning yarmi, Kz 2–1,2, Kengash oralig'i 0,5–2; Kengashning 31.10.2025 dagi qarori
+har mahallaga koeffitsiyent belgilagan (VM 526 asosida). Tizim VM 151 4-ilovasi bo'yicha hisoblaydi.
+(2) VM 151 da Ko 2-qatori «50 foizdan ortiq», tizimda «50 foiz va undan ortiq» yozilgan. (3) 4-ilova 5-band
+ruxsat etilgandan yuqori hajmni BHMning 0,5–1 baravarida baholaydi, formula esa Hyu ni to'liq qo'shadi.
+(4) Markaziy qatnov ko'chalari ro'yxati lex.uz da topilmadi.
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi

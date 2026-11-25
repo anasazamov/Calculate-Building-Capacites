@@ -78,6 +78,16 @@
       <p class="hint" style="margin:0">Hozircha tizim jadvalli varaqlarni (umumiy ma'lumotlar, eksplikatsiya, pardozlash jadvali) va xulosani o'qiydi; chizma varaqlaridan (qavat rejasi, kesim, fasad) faqat sath belgilari olinadi.</p>
     </div>
 
+    {% if view.norms %}
+    {% set serious = view.norms | selectattr('status', 'in', ['mismatch', 'warning']) | list %}
+    <div class="card">
+      <h2>ShNQ talablari bo'yicha tekshiruv</h2>
+      <p>{{ view.norms | length }} ta talab tekshirildi{% if serious %}: <b>{{ serious | length }} tasida e'tibor talab qilinadi</b>{% else %}, nomuvofiqlik topilmadi{% endif %}. Bu yig'im summasiga ta'sir qilmaydi.</p>
+      {% for f in serious %}<div class="flag"><span class="badge {{ f.status }}">{{ f.label }}</span> {{ f.title }} — {{ f.detail }} <span class="muted">({{ f.norm }})</span></div>{% endfor %}
+      <a class="btn secondary" href="/jobs/{{ job.id }}/review#norms" style="margin-top:8px">Hammasini ko'rish</a>
+    </div>
+    {% endif %}
+
     {% if view.attention %}
     <div class="card">
       <h2>Hujjatlardagi farqlar</h2>

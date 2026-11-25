@@ -21,7 +21,7 @@ dev = ["pytest>=8"]
 include = ["feecalc*"]
 
 [tool.setuptools.package-data]
-feecalc = ["web/templates/*.html", "web/static/*"]
+feecalc = ["web/templates/*.html", "web/static/*", "norm_sources.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -111,6 +111,12 @@
 </table>
 {% if sheet.warnings %}<h3>Ogohlantirishlar</h3><ul class="small">{% for w in sheet.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
 
+{% if sheet.norms %}<h3>ShNQ talablari bo'yicha tekshiruv (maslahat)</h3>
+<table>
+  <tr><th>Talab</th><th>Natija</th><th>Tafsilot</th><th>Me'yor</th></tr>
+  {% for f in sheet.norms %}<tr class="small"><td>{{ f.title }}</td><td>{{ f.label }}</td><td>{{ f.detail }}</td><td>{{ f.norm }}</td></tr>{% endfor %}
+</table>{% endif %}
+
 <h2>5. Kim nimani o'zgartirgan (audit jurnali)</h2>
 <table>
   <tr><th>Vaqt</th><th>Xodim</th><th>Amal</th><th>Obyekt</th><th>Eski</th><th>Yangi</th><th>Sabab</th></tr>

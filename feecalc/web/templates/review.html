@@ -256,6 +256,24 @@
   </table></div></div>
 </details>
 
+<details class="section" id="norms" {% if view.norms | selectattr('status', 'in', ['mismatch', 'warning']) | list %}open{% endif %}>
+  <summary>ShNQ talablari bo'yicha tekshiruv <span class="count">{{ view.norms | length }} ta</span>
+    {% for status in ('mismatch', 'warning') %}{% set n = view.norms | selectattr('status', 'equalto', status) | list | length %}{% if n %}<span class="badge {{ status }}">{{ n }} ta {{ NORM_LABELS[status] }}</span>{% endif %}{% endfor %}</summary>
+  <div class="body">
+    {% if view.norms %}
+    <p class="hint">Tizim o'qigan raqamlar bilan tekshirib bo'ladigan talablargina tekshirilgan. Har birida me'yor bandi so'zma-so'z keltirilgan (manba: lex.uz). Bu maslahat, ekspertiza xulosasi o'rnini bosmaydi.</p>
+    <div class="tablewrap"><table class="fixed">
+      <tr><th style="width:28%">Talab</th><th style="width:21%">Natija</th><th>Tafsilot va me'yor</th></tr>
+      {% for f in view.norms %}
+      <tr><td {% if f.file and f.page %}class="src" tabindex="0" data-file="{{ f.file }}" data-page="{{ f.page }}" data-snippet="{{ f.snippet }}"{% endif %}>{{ f.title }}</td>
+        <td><span class="badge {{ f.status }}">{{ f.label }}</span></td>
+        <td class="small">{{ f.detail }}<div class="val-src"><b>{{ f.norm }}</b>{% if f.quote %}: «{{ f.quote }}»{% endif %}</div></td></tr>
+      {% endfor %}
+    </table></div>
+    {% else %}<p class="muted">Me'yoriy hujjatlar bazasi yuklanmagan yoki tekshirib bo'ladigan talab topilmadi.</p>{% endif %}
+  </div>
+</details>
+
 {% set differing = view.checks | selectattr('status', 'equalto', 'mismatch') | list | length %}
 {% set warned = view.checks | selectattr('status', 'equalto', 'warning') | list | length %}
 <details class="section" id="checks">

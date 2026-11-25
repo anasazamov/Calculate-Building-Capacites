@@ -77,6 +77,16 @@
       <ul class="placeholders">{% for name, meaning in placeholders.items() %}<li><code>{{ '{{' }}{{ name }}{{ '}}' }}</code> — {{ meaning }}</li>{% endfor %}</ul></details>
   </div>
 
+  <div class="card" id="documents">
+    <h2>Me'yoriy hujjatlar bazasi</h2>
+    {% if documents %}<p>Tizim tavsiya va tekshiruvlarda shu hujjatlarning matniga tayanadi (lex.uz dan yuklangan, serverda saqlanadi).</p>
+    <div class="tablewrap"><table>
+      <tr><th>Hujjat</th><th class="n">Bandlar</th><th>Yuklangan</th></tr>
+      {% for d in documents %}<tr class="small"><td><a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.designation or d.doc_id }}</a> — {{ d.title }}</td><td class="n">{{ d.clauses }}</td><td>{{ d.fetched_at[:10] }}</td></tr>{% endfor %}
+    </table></div>
+    {% else %}<p class="callout warn" style="margin:0">Baza bo'sh. Serverda <code>python scripts/sync_norms.py</code> buyrug'i hujjatlarni lex.uz dan yuklaydi.</p>{% endif %}
+  </div>
+
   <div class="card">
     <h2>O'zgarishlar jurnali</h2>
     {% if log %}<div class="tablewrap"><table>

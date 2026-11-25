@@ -34,6 +34,10 @@ The user interface is in Uzbek (Latin script); code, comments and commit message
 | `feecalc/extract.py` | prompts, JSON schemas, model requests, verified value records |
 | `feecalc/verify.py` | verbatim source check, strict number parsing, sums, equality, address, model agreement |
 | `feecalc/volumes.py` | Hb per building, Ha / Ht / Hu components, Hyu proposal, industrial 3 m indicator |
+| `feecalc/decide.py` | the system's recommendation: coefficients and volumes with a stated basis, assumptions, open items |
+| `feecalc/knowledge.py` | local knowledge base of normative documents (SQLite FTS5), filled from lex.uz |
+| `feecalc/norms.py` | checks against building-code clauses quoted from the knowledge base |
+| `feecalc/contract.py` | contract annex (.docx), sum in words, fill of the organisation's own template |
 | `feecalc/fee.py` | the fee formula in `Decimal`, coefficient options, rounding |
 | `feecalc/pipeline.py` | extraction run (model-backed) and assessment (pure code) |
 | `feecalc/llm.py` | client for the local vLLM servers: raw response store, schema check, failure detection |
@@ -123,6 +127,19 @@ fractions to 0.90.
 | `FEECALC_LOCAL_PORT` | `8000` | plain-HTTP loopback listener kept for SSH tunnels when `FEECALC_HOST` is public |
 | `FEECALC_PARALLEL` | `12` | requests in flight per model; keep below the server's `MAX_SEQS` (default 16) |
 | `FEECALC_DEGENERATE_MARKER` | `logs/degenerate_marker.jsonl` | marker file watched by the watchdog |
+
+## Normative knowledge base
+
+```bash
+.venv/bin/python scripts/sync_norms.py                     # download the registered documents from lex.uz (cached)
+.venv/bin/python scripts/sync_norms.py --only vm-151 --refresh   # pick up amendments of one document
+```
+
+The sources are listed in `feecalc/norm_sources.json`; the base lives in `data/norms/knowledge.db`.
+Requests carry only document identifiers and normative search terms, never project content.
+Without the base the application works; the code checks are simply not shown.
+Reference data the recommendation relies on (central streets, zones, BHM, council coefficient,
+contract template) is maintained by staff on the `/reference` page.
 
 ## Tests and measurements
 

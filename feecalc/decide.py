@@ -26,7 +26,7 @@ VOLUME_CODES = ("Hb", "Hyu", "Ha", "Ht", "Hu")
 class Reference:
     """Reference data entered by staff; the web app keeps it in SQLite (see web/store.py)."""
     bhm: Decimal = fee.BHM_DEFAULT
-    bhm_basis: str = "2026-yil 1-sentabrdan amaldagi qiymat"
+    bhm_basis: str = "PF-115 (23.06.2026), 3-band: 2026-yil 1-sentabrdan"
     k_council: Decimal = Decimal("1")
     k_council_basis: str = "Kengash qarori ma'lumotnomaga kiritilmagan"
     zones: dict[str, tuple[str, str]] = field(default_factory=dict)                    # settlement -> (Kz code, basis)

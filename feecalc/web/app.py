@@ -27,7 +27,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import classify, contract, decide, extract, fee, ingest, llm, pipeline, verify, volumes
+from .. import classify, contract, decide, extract, fee, ingest, llm, norms, pipeline, verify, volumes
+from ..knowledge import KnowledgeBase
 from .store import Store, now
 
 HERE = Path(__file__).parent
@@ -169,7 +170,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         VOLUME_LABELS=volumes.VOLUME_LABELS, VOLUME_CODES=volumes.VOLUME_CODES, STAGES=pipeline.STAGES,
         JOB_STATUS={"queued": "navbatda", "running": "o'qilmoqda", "ready": "tekshirish kutilmoqda",
                     "failed": "xato bilan to'xtadi", "finalized": "yakunlangan"},
-        AUDIT_LABELS=AUDIT_LABELS, GROUP_TITLES=contract.COEFFICIENT_NAMES,
+        AUDIT_LABELS=AUDIT_LABELS, GROUP_TITLES=contract.COEFFICIENT_NAMES, NORM_LABELS=norms.LABELS,
         AGREEMENT={"match": "mos", "mismatch": "MOS EMAS", "only_1": "faqat 1-model", "only_2": "faqat 2-model",
                    "neither": "ikkalasida yo'q"},
         FEE_GROUPS=fee.GROUPS, BHM_DEFAULT=fee.BHM_DEFAULT,
@@ -246,6 +247,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
 
     # ---------- reference data and the system's recommendation ----------
     descriptions: dict[int, dict | None] = {}  # for jobs read before the object description was stored
+    knowledge = KnowledgeBase(data_dir / "norms" / "knowledge.db")  # filled by scripts/sync_norms.py; may be empty
+    app.state.knowledge = knowledge
 
     def load_reference() -> decide.Reference:
         rows = store.reference_rows()
@@ -299,6 +302,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         a["all_confirmed"] = all(s["valid"] for s in states.values())
         a["attention"] = attention(a)
         a["coverage"] = coverage(job["result"])
+        a["norms"] = norms.check(a, description(job), knowledge)
         return a
 
     def recommended_calc(rec: dict) -> dict:
@@ -371,7 +375,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
                             "formula": view["volumes"][c]["auto"]["formula"] or view["volumes"][c]["formula"],
                             "notes": view["volumes"][c]["notes"], "assumptions": view["volumes"][c]["auto"]["assumptions"],
                             "decision": view["decisions"][c]["decision"]} for c in volumes.VOLUME_CODES},
-            "object": description(job), "recommendation": view["recommendation"],
+            "object": description(job), "recommendation": view["recommendation"], "norms": view["norms"],
             "permitted_floors": job["permitted_floors"],
             "calc": calc, "fee": fee_data, "audit": store.audit_log(job["id"]),
         }
@@ -776,7 +780,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             "staff": staff(request), "ref": ref, "streets": streets,
             "zones": [r for r in rows if r["kind"] == "zone"], "log": store.reference_log(),
             "kz_options": [o for o in fee.GROUPS["kz"] if o.value is not None],
-            "has_template": contract_template().exists(), "placeholders": contract.PLACEHOLDERS})
+            "has_template": contract_template().exists(), "placeholders": contract.PLACEHOLDERS,
+            "documents": knowledge.documents()})
 
     def reference_saved(message: str) -> Response:
         return flash(RedirectResponse("/reference", status_code=303), message)
