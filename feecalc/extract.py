@@ -274,10 +274,11 @@ def project_chunks(pdf_path: Path, pages: list[Page], kinds: dict[int, classify.
         rooms = st.kind in ("explication", "finishing_schedule") or st.has_rooms
         if not tep and not rooms:
             continue
-        if p.image_ratio >= 0.1:
-            prep.warnings.append(
-                f"{p.file}, {p.number}-sahifa: maydonining {round(p.image_ratio * 100)}% qismi rastr rasm — "
-                f"ko'rsatkichlar rasm ichida bo'lsa o'qilmaydi (OCR yo'q)")
+        if p.ocr_unclear:
+            prep.warnings.append(f"{p.file}, {p.number}-sahifa: {p.ocr_unclear} ta rasmda matn bor, lekin OCR uni ishonchli "
+                                 "o'qiy olmadi — rasm sifati past; ko'rsatkichlar shu rasmda bo'lsa, qo'lda tekshiring")
+        elif p.ocr_words:
+            prep.warnings.append(f"{p.file}, {p.number}-sahifa: rasm ichidagi {p.ocr_words} ta so'z OCR bilan o'qildi")
         lines = structured_text(pdf_path, p).splitlines()
         for kind, wanted in (("tep", tep), ("rooms", rooms)):
             if not wanted:
@@ -403,6 +404,34 @@ def _record(c: Chunk, r: llm.Response) -> dict:
                                 r.completion_tokens, r.duration_s, r.cached))
 
 
+OCR_FLAG = "rasm ichidan OCR bilan o'qilgan — raqamni manba rasmida ko'zdan kechiring"
+
+
+def mark_ocr(result: object, pages_by_key: dict[tuple[str, int], Page]) -> None:
+    """Flag every accepted value whose snippet is found only in text that OCR read from an image: such a digit
+    may be misread, so staff see where it came from. Walks the whole reading result."""
+    if isinstance(result, list):
+        for item in result:
+            mark_ocr(item, pages_by_key)
+        return
+    if not isinstance(result, dict):
+        return
+    page = pages_by_key.get((result.get("file"), result.get("page"))) if "source_text" in result else None
+    if page is not None and page.ocr_words and result.get("status") == verify.ACCEPTED and result.get("source_text"):
+        plain = verify.normalize_joined(page_line_text(Page(page.file, page.number, page.width, page.height, "",
+                                                             [w for w in page.words if not w.ocr])))
+        if verify.normalize_joined(str(result["source_text"])) not in plain and OCR_FLAG not in result.get("flags", []):
+            result.setdefault("flags", []).append(OCR_FLAG)
+    for value in result.values():
+        if isinstance(value, (dict, list)):
+            mark_ocr(value, pages_by_key)
+
+
+def _with_ocr_marks(result: dict, pages: list[Page]) -> dict:
+    mark_ocr(result, {(p.file, p.number): p for p in pages})
+    return result
+
+
 def page_texts(pages: list[Page], chunks: list[Chunk]) -> dict[int, list[str]]:
     """Texts used for source verification, per page: the text layer, its rebuilt-lines form and
     the chunks shown to the model (all derived from that page's text layer)."""
@@ -504,14 +533,14 @@ def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path,
     if len(prep.chunks) > 1:
         buildings = _merge_buildings(buildings, BUILDING_FIELDS, m.key)
     flag_floor_contradictions(buildings, floor_statements(pages))
-    return {
+    return _with_ocr_marks({
         "doc": "conclusion", "model": m.key,
         "scalars": {k: merge(k, v, m.key) for k, v in scalars.items()},
         "totals": {k: merge(k, v, m.key) for k, v in totals.items()},
         "site_areas": _dedupe(site),
         "buildings": buildings,
         "requests": requests, "warnings": prep.warnings,
-    }
+    }, pages)
 
 
 def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, classify.SheetType]]],
@@ -559,18 +588,20 @@ def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, cla
                     rooms.append({"name": x["name"], "level": x.get("level"), "area": area, "volume": volume})
     merged = _merge_buildings(buildings, PROJECT_BUILDING_FIELDS, m.key)
     kept = [b for b in merged if any(b[f]["status"] != verify.NOT_FOUND for f in KEY_NUMERIC_FIELDS)]
+    dropped_buildings = [{"name": str(b["name"]["value"]), "file": b["name"].get("file"), "page": b["name"].get("page"),
+                          "source_text": b["name"].get("source_text")} for b in merged if b not in kept and b["name"].get("value")]
     if len(kept) < len(merged):
         dropped = [str(b["name"]["value"]) for b in merged if b not in kept]
         warnings.append(f"Loyihada {len(dropped)} ta bino nomi maydon/hajm ko'rsatkichisiz uchradi va binolar "
                         f"ro'yxatiga kiritilmadi: " + "; ".join(dropped[:6]))
-    return {
-        "doc": "project", "model": m.key,
+    return _with_ocr_marks({
+        "doc": "project", "model": m.key, "dropped_buildings": dropped_buildings,
         "scalars": {**{k: merge(k, v, m.key) for k, v in scalars.items()},
                     "address": merge("address", addresses, m.key)},
         "site_areas": _dedupe(site), "buildings": kept,
         "area_breakdown": _dedupe(breakdown), "floor_heights": _dedupe(heights),
         "rooms": rooms, "requests": requests, "warnings": warnings,
-    }
+    }, [p for _pdf, ps, _k in files for p in ps])
 
 
 def stitch_addresses(values: list[dict], texts: dict[int, list[str]], gap: int = 16) -> list[dict]:

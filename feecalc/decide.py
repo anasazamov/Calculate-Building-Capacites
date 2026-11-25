@@ -232,7 +232,7 @@ def decide_hb(view: dict, industrial: bool) -> dict:
     is_tank = (lambda r: judged.get(r["name"]) == "inshoot") if judged is not None else (lambda r: bool(_TANK.search(_plain(str(r["name"])))))
     tanks = [r for r in rows if is_tank(r) and not (r.get("override") or {}).get("included")]
     rows = [r for r in rows if r not in tanks]
-    if strict is not None and not industrial and not tanks:
+    if strict is not None and not industrial and not tanks and not view.get("judged_candidates"):
         return _volume(Decimal(strict), view["volumes"]["Hb"]["formula"], [], True)
     assumptions: list[str] = [
         f"{r['name']}: sig'im inshooti (handak, havza, rezervuar) — yozilgan m³ uning sig'imi, bino hajmi emas; Hb ga qo'shilmadi"
@@ -267,6 +267,19 @@ def decide_hb(view: dict, industrial: bool) -> dict:
                                "tekshirish sahifasida kiriting")
             continue
         parts.append(volume)
+    # Buildings the project names without any figure (judgment stage): a new one makes Hb incomplete.
+    for question, answer in (view.get("judged_candidates") or {}).items():
+        name = question.split("\n")[0].removeprefix("Qator: ").strip("«»")
+        if answer == "yangi_bino":
+            return _volume(None, "", assumptions + [f"DIQQAT — «{name}»: loyihada yangi bino sifatida ko'rsatilgan, lekin maydoni "
+                                                    "va hajmi hujjatlarda yo'q. Hb to'liq emas — bu bino hajmini kiriting"], False)
+        if answer is None:
+            assumptions.append(f"DIQQAT — «{name}»: loyiha ro'yxatida ko'rsatkichsiz turibdi; modellar uning bino ekanligi bo'yicha "
+                               "kelishmadi — hisobga kiritilmadi, tekshiring")
+        else:
+            why = {"takror": "ro'yxatdagi bino bilan bir xil", "bino_emas": "bino emas (maydoncha, uskuna va h.k.)",
+                   "mavjud": "mavjud bino, yangi qurilish emas"}[answer]
+            assumptions.append(f"«{name}»: {why} — hisobga kirmaydi (modellar xulosasi)")
     if not parts:
         return _volume(None, "", assumptions + ["Birorta bino hajmi aniqlanmadi — Hb ni kiriting"], False)
     total = sum(parts, Decimal(0))

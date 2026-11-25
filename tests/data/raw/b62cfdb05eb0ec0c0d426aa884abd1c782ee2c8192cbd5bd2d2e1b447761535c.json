@@ -1,8 +1,8 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T12:55:40",
- "duration_s": 2.049,
+ "time": "2026-11-25T13:49:40",
+ "duration_s": 2.07,
  "prompt_hash": "f3acb53b6d0f519399c28b79bf77c2755c9bc7ebe8c24fa4016ea2df95a52342",
  "request": {
   "model": "qwen3.8-27b",
@@ -68,9 +68,9 @@
   }
  },
  "response": {
-  "id": "chatcmpl-a1c1eae6196637c6",
+  "id": "chatcmpl-8ec0dad2b41f0db7",
   "object": "chat.completion",
-  "created": 1795611338,
+  "created": 1795614578,
   "model": "qwen3.8-27b",
   "choices": [
    {

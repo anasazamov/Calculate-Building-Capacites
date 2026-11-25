@@ -231,6 +231,22 @@ bu ishlarda natijani o'zgartirmadi — foydasi yangi uslubdagi loyihalarda ko'ri
 O'lchov paytida o'zimning xatoim chiqdi va tuzatildi: shtamp matni 400 belgida kesilgani uchun reja sarlavhasi
 yo'qolib, bitta ishda chegirmalar noto'g'ri chiqqan.
 
+### OCR va ko'rsatkichsiz binolar (25.11.2026)
+
+- **OCR** (`feecalc/ingest.py`): sahifadagi har bir sezilarli rasm Tesseract bilan o'qiladi (rus, o'zbek lotin va kirill).
+  Rasm matnmi yoki surat/chizmami — rasmning o'z so'zlari ishonchliligining medianasi hal qiladi (o'lchandi: jadval
+  rasmi ~92–96, sun'iy yo'ldosh surati va chizma ~50), ro'yxat yoki andoza kerak emas. Faqat ishonchli so'zlar
+  koordinatasi bilan sahifa so'zlariga qo'shiladi; matn qatlamida allaqachon bor so'zlar takrorlanmaydi. Shundan
+  keyin model ularni oddiy matn kabi o'qiydi, manba tekshiruvi va belgilash ham ishlaydi. Manbasi faqat OCR matnida
+  topilgan qiymat «rasm ichidan OCR bilan o'qilgan» deb belgilanadi. Matnli, lekin o'qib bo'lmaydigan rasm
+  ogohlantirishda aytiladi. Natija fayl mazmuni bo'yicha keshlanadi (11 sahifali albom: birinchi o'qish ~2,5 daqiqa,
+  keyingisi 1 soniyadan kam). 302030 albomida «rastr» deb ogohlantirilgan sahifalardagi jadvallarning matni aslida
+  matn qatlamida ham bor ekan — OCR yangi qiymat qo'shmadi; bitta rasm «matnli, lekin o'qib bo'lmadi» deb belgilandi.
+- **Ko'rsatkichsiz binolar**: loyiha ro'yxatida nomi bor, lekin maydon/hajmi yo'q qatorlar endi mulohaza bosqichiga
+  beriladi (yangi bino / ro'yxatdagining takrori / bino emas / mavjud bino). Ikkala model «yangi bino» desa, Hb taklifi
+  to'xtaydi va bu bino hajmi so'raladi; kelishmasa — ogohlantirish bilan ko'rsatiladi. 302030 da 5 nomning beshalasi
+  ikkala modelda bir xil va to'g'ri baholandi (4 tasi «bino emas»/«mavjud», «2-qavatli turar-joy binosi» — takror).
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi

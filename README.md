@@ -59,6 +59,9 @@ The user interface is in Uzbek (Latin script); code, comments and commit message
 git clone https://github.com/anasazamov/Calculate-Building-Capacites.git
 cd Calculate-Building-Capacites
 
+# 0. OCR engine for text inside raster images (scans, pictures of tables)
+sudo apt-get install -y tesseract-ocr tesseract-ocr-rus tesseract-ocr-uzb tesseract-ocr-uzb-cyrl
+
 # 1. application environment
 uv venv .venv --python 3.12
 uv pip install -p .venv/bin/python -e ".[dev]"

@@ -245,3 +245,17 @@ def test_a_free_standing_technical_building_goes_into_ht():
     view["judged_structures"] = {}                                      # the models did not agree: nothing is assumed
     plain = decide.recommend(view, None, decide.Reference(), None)
     assert plain["volumes"]["Ht"]["value"] == "0" and plain["volumes"]["Hb"]["value"] == "20062.65"
+
+
+def test_a_building_named_without_figures_is_never_dropped_silently():
+    rows = [hb_row("Kottej", "19822.65")]
+    view = view_with(rows, "19822.65")
+    view["judged_candidates"] = {"Qator: «Chiqindi yig'ish maydonchasi»\nRo'yxatdagi...": "bino_emas",
+                                 "Qator: «Mavjud turar va noturar binolar»\nRo'yxatdagi...": "mavjud"}
+    out = decide.decide_hb(view, industrial=False)
+    assert out["value"] == "19822.65" and any("bino emas" in a for a in out["assumptions"]) and any("mavjud bino" in a for a in out["assumptions"])
+    view["judged_candidates"]["Qator: «Garaj»\nRo'yxatdagi..."] = None          # the models did not agree
+    assert any("kelishmadi" in a and "Garaj" in a for a in decide.decide_hb(view, industrial=False)["assumptions"])
+    view["judged_candidates"]["Qator: «Sport zali»\nRo'yxatdagi..."] = "yangi_bino"
+    blocked = decide.decide_hb(view, industrial=False)
+    assert blocked["value"] is None and "Sport zali" in blocked["assumptions"][-1]

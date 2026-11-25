@@ -57,6 +57,24 @@ Avval bir jumla mulohaza, keyin javob. Faqat JSON:
 SHEET_ANSWERS = ("yertola", "qavatlar", "reja_emas", UNSURE)
 
 
+CANDIDATE_SYSTEM = """Siz qurilish hajmini hisoblovchi mutaxassissiz. Loyihadagi binolar ro'yxatida NOMI bor, lekin maydoni va hajmi
+yozilmagan bitta qator beriladi; uning yonida ro'yxatdagi boshqa binolar ham ko'rsatilgan.
+Savol: bu qator nima?
+- "yangi_bino" — yangi quriladigan ALOHIDA bino yoki inshoot (xonalari bor yoki hajmi bor), ro'yxatdagi boshqa binolarning takrori emas;
+  uning hajmi yig'imga kirishi kerak, lekin hujjatda yo'q;
+- "takror" — ro'yxatdagi binolardan birining boshqacha yozilgan nomi (masalan, chizmadagi yozuv);
+- "bino_emas" — maydoncha, uskuna, transformator, to'siq, yo'l, ko'kalamzor, mashina turadigan joy va shunga o'xshash;
+- "mavjud" — saqlanadigan yoki buziladigan mavjud bino (yangi qurilish emas);
+- "aniq_emas" — bilib bo'lmaydi.
+Avval bir-ikki jumla mulohaza, keyin javob. Faqat JSON:
+{"reason": "<mulohaza>", "answer": "yangi_bino" | "takror" | "bino_emas" | "mavjud" | "aniq_emas"}"""
+CANDIDATE_ANSWERS = ("yangi_bino", "takror", "bino_emas", "mavjud", UNSURE)
+
+
+def candidate_question(name: str, listed: list[str]) -> str:
+    return f"Qator: «{name}»\nRo'yxatdagi boshqa binolar: " + "; ".join(f"«{n}»" for n in listed[:12])
+
+
 def _schema(answers: tuple[str, ...], floors: bool = False) -> dict:
     properties: dict = {"reason": {"type": "string", "maxLength": 400}, "answer": {"type": "string", "enum": list(answers)}}
     if floors:
@@ -79,10 +97,15 @@ def _ask_all(models: list[llm.Model], system: str, schema: dict, items: list[str
     return out
 
 
-def run(models: list[llm.Model], structures: list[str], rooms: list[str], sheets: list[str], raw_dir: Path) -> dict:
-    """Ask the three kinds of questions. Returns {"structures", "rooms", "sheets", "cut"}: item -> model -> answer."""
-    cut = {kind: max(0, len(items) - MAX_ITEMS) for kind, items in (("structures", structures), ("rooms", rooms), ("sheets", sheets))}
+def run(models: list[llm.Model], structures: list[str], rooms: list[str], sheets: list[str], raw_dir: Path,
+        candidates: list[str] | None = None) -> dict:
+    """Ask the kinds of questions. Returns {"structures", "rooms", "sheets", "candidates", "cut"}: item -> model -> answer.
+    `candidates`: questions about buildings named in the project without any figure (see candidate_question)."""
+    candidates = candidates or []
+    cut = {kind: max(0, len(items) - MAX_ITEMS) for kind, items in (("structures", structures), ("rooms", rooms), ("sheets", sheets),
+                                                                       ("candidates", candidates))}
     return {
+        "candidates": _ask_all(models, CANDIDATE_SYSTEM, _schema(CANDIDATE_ANSWERS), candidates[:MAX_ITEMS], raw_dir),
         "structures": _ask_all(models, STRUCTURE_SYSTEM, _schema(STRUCTURE_ANSWERS), structures[:MAX_ITEMS], raw_dir),
         "rooms": _ask_all(models, ROOM_SYSTEM, _schema(ROOM_ANSWERS), rooms[:MAX_ITEMS], raw_dir),
         "sheets": _ask_all(models, SHEET_SYSTEM, _schema(SHEET_ANSWERS, floors=True), sheets[:MAX_ITEMS], raw_dir),

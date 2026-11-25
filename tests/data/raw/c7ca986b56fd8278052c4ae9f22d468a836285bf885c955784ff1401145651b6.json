@@ -1,8 +1,8 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T12:56:33",
- "duration_s": 1.534,
+ "time": "2026-11-25T13:50:33",
+ "duration_s": 1.6,
  "prompt_hash": "4967335adfc8c22e401c4aa6c9e26ef225fafec27173ddc07ad1fd8bbf736ac4",
  "request": {
   "model": "qwen3.8-27b",
@@ -56,16 +56,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-9b01b166fca5ad8e",
+  "id": "chatcmpl-8cbac17a0edb7fe2",
   "object": "chat.completion",
-  "created": 1795611392,
+  "created": 1795614632,
   "model": "qwen3.8-27b",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\n\"reason\": \"Turar joy binosi odamlar yashashi uchun mo'ljallangan asosiy bino hisoblanadi, shuning uchun u 'bino' turiga kiradi.\",\n\"answer\": \"bino\"\n}",
+     "content": "{\n\"reason\": \"Turar joy binosi odamlar yashashi uchun mo'ljallangan oddiy bino hisoblanadi, shuning uchun u texnik inshoot yoki sig'imli inshoot emas.\",\n\"answer\": \"bino\"\n}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -83,8 +83,8 @@
   "system_fingerprint": "vllm-0.34.0-1c19d697",
   "usage": {
    "prompt_tokens": 416,
-   "total_tokens": 475,
-   "completion_tokens": 59,
+   "total_tokens": 478,
+   "completion_tokens": 62,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

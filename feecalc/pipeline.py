@@ -132,7 +132,7 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
             | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
     draft = {"project": project, "conclusion": conclusion, "category_suggestions": {}}
     structures = [r["name"] for r in assess(draft)["hb_rows"]]
-    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), raw_dir)
+    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), raw_dir, candidate_questions(project))
     suggestions = {name: {"boshqa": "other", judge.UNSURE: "other"}.get(a["model1"]["answer"], a["model1"]["answer"])
                    for name, a in judgments["rooms"].items()}
     timing["categories"] = time.monotonic() - start
@@ -205,6 +205,15 @@ def read_plan_index(files: list[dict], judgments: dict | None = None) -> list[di
     return out
 
 
+def candidate_questions(project: dict) -> list[str]:
+    """Buildings named in the project without any figure: one question each, with the listed buildings as context."""
+    if not project:
+        return []
+    pm = project["model1"]
+    listed = [str(b["name"].get("value")) for b in pm["buildings"] if b["name"].get("value")]
+    return [judge.candidate_question(d["name"], listed) for d in pm.get("dropped_buildings", [])]
+
+
 def rejudge(result: dict, job_dir: Path) -> dict:
     """Run the judgment stage again on a job that is already read (after the questions changed, or for a job read
     before the stage existed). Reading is not repeated. Returns the result with fresh judgments and plan index."""
@@ -225,7 +234,8 @@ def rejudge(result: dict, job_dir: Path) -> dict:
              if volumes.needs_model_suggestion(x["name"], "breakdown", x["name"], x.get("level_mark"))}
             | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
     structures = [r["name"] for r in assess({**result, "judgments": {}})["hb_rows"]]
-    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), job_dir / "raw")
+    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), job_dir / "raw",
+                          candidate_questions(result["project"]))
     return {**result, "judgments": judgments, "plan_index": read_plan_index(result["files"], judgments),
             "plans": result.get("plans") or read_plans(result["files"])}
 
@@ -565,6 +575,8 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
         "heights": [{"level": h.label, "kind": h.level.kind, "value": str(h.value), "origin": h.origin} for h in heights],
         "floors": None if floors is None else str(floors),
         "industrial": {"rows": industrial, "total": str(industrial_total)},
+        "judged_candidates": ({question: (answer or {"answer": None})["answer"] for question, answers in judgments["candidates"].items()
+                               for answer in [judge.agreed(answers)]} if "candidates" in judgments else None),
         "judged_structures": ({name: answer["answer"] for name, answers in judgments["structures"].items()
                                for answer in [judge.agreed(answers)] if answer} if "structures" in judgments else None),
         "project_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in p1["buildings"]],
