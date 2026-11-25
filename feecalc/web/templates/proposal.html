@@ -7,9 +7,10 @@
 <p class="lead">Hisob loyiha bo'yicha; har qiymatning asosi yonida. To'g'ri bo'lsa — tasdiqlang.</p>
 
 {% for e in rec.exemptions %}<div class="callout bad"><b>Istisno bo'lishi mumkin.</b> {{ e.text }}</div>{% endfor %}
-{% if rec.open %}
+{% set still_open = [] %}{% for o in rec.open if o.scope | lower not in calc or not calc[o.scope | lower] %}{% set _ = still_open.append(o) %}{% endfor %}
+{% if still_open %}
 <div class="callout warn"><b>Tizim quyidagilarni o'zi hal qila olmadi — bu yerda sizning qaroringiz kerak:</b>
-  <ul>{% for o in rec.open %}{% if o.scope | lower not in calc or not calc[o.scope | lower] %}<li><b>{{ o.scope }}</b>: {{ o.text }}</li>{% endif %}{% endfor %}</ul>
+  <ul>{% for o in still_open %}<li><b>{{ o.scope }}</b>: {{ o.text }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
 
@@ -17,11 +18,12 @@
 {% if view.differences %}
 <div class="callout {{ 'bad' if left else 'ok' }}" id="expertise">
   <b>Loyiha va xulosada {{ view.differences | length }} ta farq{{ ' — ' ~ left ~ ' tasi tekshirilmagan' if left else ' — hammasi tekshirilgan' }}.</b>
-  Hisob loyiha bo'yicha.{% if left %} Farqlar tekshirilmaguncha tasdiqlab bo'lmaydi.{% endif %}
+  Hajmlar loyiha bo'yicha.{% if left %} Farqlar tekshirilmaguncha tasdiqlab bo'lmaydi.{% endif %}
   <a class="btn {{ '' if left else 'secondary' }} small" href="/jobs/{{ job.id }}/review#differences" style="margin-left:8px">Farqlarni ko'rish</a>
 </div>
 {% elif x.status == 'ok' %}<div class="callout ok" id="expertise">Xulosa loyihaga mos: {{ x.compared }} ta ko'rsatkich solishtirildi.</div>
-{% elif not view.has_project %}<div class="callout warn" id="expertise">Loyiha berilmagan — xulosani tekshirib bo'lmadi.</div>{% endif %}
+{% elif not view.has_project %}<div class="callout warn" id="expertise">Loyiha berilmagan — xulosani tekshirib bo'lmadi.</div>
+{% else %}<div class="callout warn" id="expertise">Loyiha va xulosada umumiy ko'rsatkich topilmadi — xulosa loyihaga solishtirilmadi.</div>{% endif %}
 
 <form method="post" action="/jobs/{{ job.id }}/approve" class="calc" id="approve"
       data-confirm-title="Tavsiyani tasdiqlaysizmi?" data-confirm-ok="Ha, tasdiqlash"

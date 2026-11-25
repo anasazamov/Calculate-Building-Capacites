@@ -92,21 +92,21 @@
 
 <section>
 <div class="row between" style="margin-bottom:10px"><h1 style="margin:0">Tekshirish</h1>{% if locked %}<span class="badge ok">yakunlangan — faqat ko'rish</span>{% endif %}</div>
-{% if not view.has_project %}<div class="callout info">Loyiha berilmagan — faqat xulosa o'qildi, solishtirish yo'q.</div>{% endif %}
 
 {% set diffs = view.differences %}{% set left = view.unreviewed | length %}
 <div class="card" id="differences">
   <div class="row between">
     <h2 style="margin:0">Loyiha va xulosa farqlari</h2>
-    {% if diffs %}<span class="badge {{ 'ok' if not left else 'mismatch' }}">{{ diffs | length - left }} / {{ diffs | length }} tekshirildi</span>{% endif %}
+    {% if diffs %}<span class="badge {{ 'ok' if not left else ('' if locked else 'mismatch') }}">{{ diffs | length - left }} / {{ diffs | length }} tekshirildi</span>{% endif %}
   </div>
   {% if diffs %}
-  <p class="hint" style="margin:6px 0 10px">Hisob loyiha bo'yicha. Qiymatni bosing — chapda manbasi ochiladi. Har farqni ko'rib, «Tekshirildi» deb belgilang.</p>
+  {% if not locked %}<p class="hint" style="margin:6px 0 10px">Hajmlar loyiha bo'yicha olinadi. Qiymatni bosing — chapda manbasi ochiladi. Har farqni ko'rib, «Tekshirildi» deb belgilang.</p>{% endif %}
   <div class="tablewrap"><table class="fixed diffs">
-    <tr><th style="width:22%">Ko'rsatkich</th><th style="width:27%">Loyiha (hisobda)</th><th style="width:27%">Xulosa</th><th style="width:11%">Farq</th><th style="width:13%"></th></tr>
+    <tr><th style="width:20%">Ko'rsatkich</th><th style="width:26%">Loyiha</th><th style="width:26%">Xulosa</th><th style="width:12%" title="loyiha minus xulosa">Farq</th><th class="act"></th></tr>
     {% for d in diffs %}{% set ps, cs = d.project_source or {}, d.conclusion_source or {} %}
     <tr id="d-{{ d.key }}" class="{{ 'reviewed' if d.review }}">
-      <td><b>{{ d.field }}</b>{% if d.where %}<div class="small muted">{{ d.where }}</div>{% endif %}</td>
+      <td><b>{{ d.field }}</b>{% if d.where %}<div class="small muted">{{ d.where }}</div>{% endif %}
+        <div class="small {{ 'flag' if d.used != 'loyiha' else 'muted' }}">hisobda: {{ d.used }}{% if d.note %} — {{ d.note }}{% endif %}</div></td>
       <td {% if ps.file and ps.page %}class="src" tabindex="0" data-file="{{ ps.file }}" data-page="{{ ps.page }}" data-snippet="{{ ps.source_text or '' }}"{% endif %}>
         {% if d.words %}{% for w, changed in d.words[0] %}<span class="{{ 'w-diff' if changed }}">{{ w }}</span> {% endfor %}{% else %}<b>{{ d.project }}</b>{% endif %}
         {% if ps.page %}<div class="val-src">{{ ps.page }}-sahifa</div>{% endif %}</td>
@@ -116,11 +116,13 @@
       <td class="n">{% if d.delta is not none %}<b class="delta">{{ '+' if not d.delta.startswith('-') }}{{ d.delta | num }}</b>{% if d.percent %}<div class="small muted">{{ '+' if not d.percent.startswith('-') }}{{ d.percent | num }} %</div>{% endif %}{% else %}<span class="small muted">matn farqi</span>{% endif %}</td>
       <td>{% if d.review %}<span class="badge ok">tekshirildi</span><div class="small muted">{{ d.review.user }}</div>
             {% if not locked %}<form method="post" action="/jobs/{{ job.id }}/difference/{{ d.key }}"><input type="hidden" name="undo" value="1"><button type="submit" class="linkbtn">bekor qilish</button></form>{% endif %}
-          {% elif not locked %}<form method="post" action="/jobs/{{ job.id }}/difference/{{ d.key }}"><button type="submit" class="btn small">Tekshirildi</button></form>{% endif %}</td>
+          {% elif not locked %}<form method="post" action="/jobs/{{ job.id }}/difference/{{ d.key }}"><button type="submit" class="btn small">Tekshirildi</button></form>
+          {% else %}<span class="small muted">belgilanmagan</span>{% endif %}</td>
     </tr>{% endfor %}
   </table></div>
-  {% elif view.has_project %}<p class="callout ok" style="margin:8px 0 0">Farq yo'q — {{ view.expertise.compared }} ta ko'rsatkich mos.</p>
-  {% else %}<p class="muted" style="margin:8px 0 0">Solishtirib bo'lmadi.</p>{% endif %}
+  {% elif view.expertise.status == 'ok' %}<p class="callout ok" style="margin:8px 0 0">Farq yo'q — {{ view.expertise.compared }} ta ko'rsatkich mos.</p>
+  {% elif view.has_project %}<p class="callout warn" style="margin:8px 0 0">Loyiha va xulosada umumiy ko'rsatkich topilmadi — solishtirilmadi.</p>
+  {% else %}<p class="muted" style="margin:8px 0 0">Loyiha berilmagan — solishtirib bo'lmadi.</p>{% endif %}
 </div>
 
 <div class="card" id="todo">

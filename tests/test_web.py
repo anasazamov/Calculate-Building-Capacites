@@ -508,11 +508,11 @@ def test_differences_are_shown_side_by_side_and_checked_one_by_one(client: TestC
 def test_numeric_difference_written_with_a_comma_is_shown(client: TestClient, sample_dir: Path):
     """Values are shown as the document writes them ("251,37"); the delta is computed from the parsed numbers."""
     from feecalc.web.app import differences
-    row = {"id": "x1", "name": "Hojatxona", "count": "21", "check": {"status": "mismatch"},
+    row = {"id": "x1", "name": "Hojatxona", "count": "21", "check": {"code": "hb_row_0", "status": "mismatch"},
            "project": {"value": "251,37", "number": "251.37", "status": "accepted", "file": "a.pdf", "page": 3},
            "conclusion": {"value": "10,2", "number": "10.2", "status": "accepted", "file": "b.pdf", "page": 3}}
-    found = differences({"scalar_rows": [], "buildings": [], "hb_rows": [row]}, {})[0]
-    assert found["project"] == "251,37" and found["conclusion"] == "21 × 10,2 = 214.2" and found["delta"] == "-37.17"
+    found = differences({"scalar_rows": [], "buildings": [], "hb_rows": [row], "checks": [], "site": {"project": [], "conclusion": []}}, {})[0]
+    assert found["project"] == "251,37" and found["conclusion"] == "21 × 10,2 = 214,2" and found["delta"] == "37.17"
     login(client)
     job = upload(client, sample_dir)
     store = client.app.state.store  # type: ignore[attr-defined]
@@ -520,3 +520,50 @@ def test_numeric_difference_written_with_a_comma_is_shown(client: TestClient, sa
     result["conclusion"]["model1"]["buildings"][0]["volume"]["value"] = "88 433,2"   # a comma, as a document writes it
     store.set_job(job, result=result)
     assert client.get(f"/jobs/{job}/review").status_code == 200
+
+
+
+def test_a_refused_approval_stores_nothing(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    store = client.app.state.store  # type: ignore[attr-defined]
+    before = (store.decisions(job), len(store.audit_log(job)), store.job(job)["calc"])
+    r = client.post(f"/jobs/{job}/approve", data=CALC)
+    assert r.status_code == 409 and "farq tekshirilmagan" in r.json()["detail"]
+    assert (store.decisions(job), len(store.audit_log(job)), store.job(job)["calc"]) == before
+
+
+def test_difference_rows_compare_like_the_checks(client: TestClient):
+    from decimal import Decimal
+    from feecalc.web.app import conclusion_reading, differences, word_diff
+    # the project may state one building or all of them: the closer reading is used and said
+    assert conclusion_reading(Decimal("36400"), Decimal("36036"), Decimal("3")) == (Decimal("36036"), "36036 (bir dona; 3 dona)")
+    assert conclusion_reading(Decimal("1300"), Decimal("600.3"), Decimal("2"))[0] == Decimal("1200.6")
+    # decimal separators between digits matter; spelling the same word in two scripts does not
+    assert any(changed for _w, changed in word_diff("11.5 m", "115 m")[0])
+    assert not any(changed for _w, changed in word_diff("11,5 м", "11.5 m")[0])
+    footprint = {"field": "footprint_area", "label": "Qurilish maydoni", "check": {"code": "b1_footprint", "status": "mismatch"},
+                 "project": {"value": "1300", "number": "1300", "status": "accepted"},
+                 "conclusion": {"value": "600,3", "number": "600.3", "status": "accepted"}}
+    count = {"field": "count", "label": "Soni", "check": None, "project": {"value": "1", "number": "1", "status": "accepted"},
+             "conclusion": {"value": "2", "number": "2", "status": "accepted"}}
+    view = {"scalar_rows": [], "hb_rows": [], "checks": [], "site": {"project": [], "conclusion": []},
+            "buildings": [{"title": "Uy", "count": "2", "fields": [footprint, count]},
+                          {"title": "Uy", "count": "2", "fields": [dict(footprint)]}]}
+    found = differences(view, {})
+    area = [d for d in found if d["field"] == "Qurilish maydoni"]
+    assert area[0]["conclusion"] == "2 × 600,3 = 1200,6" and area[0]["delta"] == "99.4" and area[0]["percent"] == "8.3"
+    assert area[0]["key"] != area[1]["key"]                                   # two buildings with the same name: two marks
+    assert any(d["field"] == "Soni" and d["used"] == "xulosa" for d in found)  # a different count is listed too
+    view["checks"] = [{"code": "site_greenery", "name": "Hudud: Ko'kalamzor — loyiha = xulosa", "status": "mismatch", "detail": ""}]
+    view["site"] = {"project": [{"kind": "greenery", "status": "accepted", "value": "185", "number": "185"}],
+                    "conclusion": [{"kind": "greenery", "status": "accepted", "value": "200", "number": "200"}]}
+    assert any(d["field"] == "Hudud: Ko'kalamzor" and d["delta"] == "-15" for d in differences(view, {}))
+
+
+def test_nothing_changes_while_the_job_is_processed_again(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    client.app.state.store.set_job(job, status="queued")  # type: ignore[attr-defined]
+    r = client.post(f"/jobs/{job}/volume/Hb/confirm")
+    assert r.status_code == 409 and "qayta ishlanmoqda" in r.json()["detail"]

@@ -108,12 +108,18 @@ def _num(v: dict | None) -> Decimal | None:
     return Decimal(v["number"]) if v and v.get("status") == "accepted" and v.get("number") is not None else None
 
 
+def _word_key(w: str) -> str:
+    """A word reduced for comparison: Latin form, lower case, punctuation dropped - but a decimal separator between
+    digits is kept (as a dot), so 11.5 and 115 stay different while 11,5 and 11.5 are the same."""
+    t = re.sub(r"(?<=\d)[,.](?=\d)", "\x00", verify.transliterate(w))
+    return re.sub(r"[^a-z0-9\x00]", "", t).replace("\x00", ".")
+
+
 def word_diff(a: str, b: str) -> tuple[list[tuple[str, bool]], list[tuple[str, bool]]]:
     """Both texts as words, each marked True where it differs. Words are compared in Latin form, so the same
     word written in Cyrillic and in Latin counts as equal."""
     ta, tb = a.split(), b.split()
-    norm = lambda w: re.sub(r"[^a-z0-9]", "", verify.transliterate(w))  # noqa: E731
-    matcher = difflib.SequenceMatcher(None, [norm(w) for w in ta], [norm(w) for w in tb], autojunk=False)
+    matcher = difflib.SequenceMatcher(None, [_word_key(w) for w in ta], [_word_key(w) for w in tb], autojunk=False)
     left: list[tuple[str, bool]] = []
     right: list[tuple[str, bool]] = []
     for op, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -122,44 +128,101 @@ def word_diff(a: str, b: str) -> tuple[list[tuple[str, bool]], list[tuple[str, b
     return left, right
 
 
-def differences(view: dict, reviewed: dict[str, dict]) -> list[dict]:
-    """Every figure the project and the conclusion both state but state differently. The project is the basis
-    of the calculation; each difference goes to staff, who look at both sources and mark it checked."""
-    out: list[dict] = []
+def _written(n: Decimal) -> str:
+    return fee.fmt_num(n).replace(".", ",")
 
-    def add(label: str, pv: dict | None, cv: dict | None, anchor: str, conclusion_text: str | None = None,
-            conclusion_number: Decimal | None = None, field: str = "", where: str = "") -> None:
-        p_text = str((pv or {}).get("value") or "")
-        c_text = conclusion_text or str((cv or {}).get("value") or "")
+
+def conclusion_reading(project: Decimal | None, unit: Decimal | None, count: Decimal) -> tuple[Decimal | None, str | None]:
+    """Which conclusion figure a project figure is compared with when the conclusion gives a per-unit value for
+    `count` identical buildings: the project may state one unit or all of them (as verify.check_equal_scaled
+    allows), so the closer reading is used and spelled out."""
+    if unit is None or count <= 1:
+        return unit, None
+    total = unit * count
+    if project is not None and abs(project - unit) < abs(project - total):
+        return unit, f"{_written(unit)} (bir dona; {_written(count)} dona)"
+    return total, f"{_written(count)} × {_written(unit)} = {_written(total)}"
+
+
+def differences(view: dict, reviewed: dict[str, dict]) -> list[dict]:
+    """Every figure the project and the conclusion both state but state differently, with both sources.
+    Each goes to staff, who look at both and mark it checked; approval waits for all of them.
+
+    The figure is "project minus conclusion", the sign used by the checks; `used` says which side the
+    calculation takes (the project, except the address, whose settlement and street feed Kz and Kj)."""
+    out: list[dict] = []
+    covered: set[str] = set()
+
+    def add(identity: str, field: str, where: str, pv: dict | None, cv: dict | None, anchor: str, *,
+            project_text: str | None = None, conclusion_text: str | None = None,
+            conclusion_number: Decimal | None = None, used: str = "loyiha", note: str = "") -> None:
+        p_text = project_text if project_text is not None else str((pv or {}).get("value") or "")
+        c_text = conclusion_text if conclusion_text is not None else str((cv or {}).get("value") or "")
         p_num, c_num = _num(pv), conclusion_number if conclusion_number is not None else _num(cv)
-        key = hashlib.sha1(f"{label}|{p_text}|{c_text}".encode()).hexdigest()[:16]
-        item = {"key": key, "label": label, "field": field or label, "where": where, "anchor": anchor,
-                "project": p_text, "conclusion": c_text,
-                "project_source": pv, "conclusion_source": cv, "delta": None, "percent": None, "words": None,
-                "review": reviewed.get(key)}
+        # the row's identity and both values: one mark per row, asked again when a value changes
+        key = hashlib.sha1(f"{identity}|{p_text}|{c_text}".encode()).hexdigest()[:16]
+        item = {"key": key, "label": f"{where}: {field}" if where else field, "field": field, "where": where,
+                "anchor": anchor, "project": p_text, "conclusion": c_text, "project_source": pv, "conclusion_source": cv,
+                "delta": None, "percent": None, "words": None, "used": used, "note": note, "review": reviewed.get(key)}
         if p_num is not None and c_num is not None:
-            item["delta"] = str(c_num - p_num)
-            item["percent"] = str(((c_num - p_num) / p_num * 100).quantize(Decimal("0.1"))) if p_num else None
+            item["delta"] = str(p_num - c_num)
+            item["percent"] = str(((p_num - c_num) / c_num * 100).quantize(Decimal("0.1"))) if c_num else None
         else:
             item["words"] = word_diff(p_text, c_text)
         out.append(item)
 
     for i, r in enumerate(view["scalar_rows"], 1):
         if r["check"] and r["check"]["status"] == "mismatch":
-            add(r["label"], r["project"], r["conclusion"], f"f-s{i}")
+            covered.add(r["check"]["code"])
+            pv = r["project"] or {}
+            if r["label"] == "Manzil":
+                # every address variant of the project is shown, not only the first one
+                variants = pv.get("variants") or ([pv] if pv else [])
+                add(f"s{i}", r["label"], "", pv, r["conclusion"], f"f-s{i}",
+                    project_text=" | ".join(str(v["value"]) for v in variants), used="xulosa",
+                    note="Kz va Kj xulosadagi manzil bo'yicha tanlanadi")
+            else:
+                add(f"s{i}", r["label"], "", r["project"], r["conclusion"], f"f-s{i}")
     for bi, b in enumerate(view["buildings"], 1):
+        where = str(b["title"]).split(" / ")[0]
+        count = Decimal(b["count"]) if b["count"] else Decimal(1)
         for fi, r in enumerate(b["fields"], 1):
-            # a building's volume is compared once, in the Hb rows below (they know the number of identical buildings)
-            if r["field"] != "volume" and r["check"] and r["check"]["status"] == "mismatch":
-                add(f"{b['title']}: {r['label']}", r["project"], r["conclusion"], f"f-b{bi}-{fi}",
-                    field=r["label"], where=str(b["title"]).split(" / ")[0])
+            if r["field"] == "volume":
+                continue  # a building's volume is compared once, in the Hb rows below
+            pv, cv = r["project"], r["conclusion"]
+            if r["field"] == "count":
+                # no check compares the counts; a different count changes Hb, so it is listed too
+                pn, cn = _num(pv), _num(cv)
+                if pn is not None and cn is not None and pn != cn:
+                    add(f"b{bi}-{r['field']}", r["label"], where, pv, cv, f"f-b{bi}-{fi}",
+                        used="xulosa", note="Hb hisobida xulosadagi son olingan")
+                continue
+            if not (r["check"] and r["check"]["status"] == "mismatch"):
+                continue
+            covered.add(r["check"]["code"])
+            if r["field"] in ("footprint_area", "total_area", "apartments"):
+                number, text = conclusion_reading(_num(pv), _num(cv), count)
+                add(f"b{bi}-{r['field']}", r["label"], where, pv, cv, f"f-b{bi}-{fi}", conclusion_text=text, conclusion_number=number)
+            else:
+                add(f"b{bi}-{r['field']}", r["label"], where, pv, cv, f"f-b{bi}-{fi}")
     for r in view["hb_rows"]:
         if r["check"]["status"] == "mismatch":
-            unit, count = _num(r["conclusion"]), Decimal(r["count"])
-            text = (f"{fee.fmt_num(count)} × {r['conclusion']['value']} = {fee.fmt_num(unit * count)}"
-                    if unit is not None and count > 1 else None)
-            add(f"Hajm: {r['name']}", r["project"], r["conclusion"], f"c-{r['id']}", text,
-                unit * count if unit is not None else None, field="Qurilish hajmi, m³", where=str(r["name"]))
+            covered.add(r["check"]["code"])
+            number, text = conclusion_reading(_num(r["project"]), _num(r["conclusion"]), Decimal(r["count"]))
+            add(f"hb-{r['id']}", "Qurilish hajmi, m³", str(r["name"]), r["project"], r["conclusion"], f"c-{r['id']}",
+                conclusion_text=text, conclusion_number=number)
+    # plot figures: each kind the project and the conclusion both state once
+    for c in view["checks"]:
+        if c["code"].startswith("site_") and c["status"] == "mismatch" and c["code"] not in covered:
+            kind = c["code"].removeprefix("site_")
+            sides = [[x for x in view["site"][doc] if x["kind"] == kind and x["status"] == "accepted"] for doc in ("project", "conclusion")]
+            if all(len(xs) >= 1 for xs in sides):
+                covered.add(c["code"])
+                add(c["code"], c["name"].split(" — ")[0], "", sides[0][0], sides[1][0], "site")
+    # anything else that compared the two documents and found them different is still listed, as text
+    for c in view["checks"]:
+        if c["status"] == "mismatch" and c["code"] not in covered and "loyiha" in c["name"] and "xulosa" in c["name"]:
+            add(c["code"], c["name"], "", None, None, "checks", project_text=c["detail"], conclusion_text="")
     return out
 
 
@@ -191,7 +254,7 @@ def attention(view: dict) -> list[dict]:
 
     def add(kind: str, text: str, anchor: str, value: dict | None = None) -> None:
         v = value or {}
-        label = verify.STATUS_LABELS.get(kind) or verify.CHECK_LABELS[kind]
+        label = {"models": "modellar turlicha"}.get(kind) or verify.STATUS_LABELS.get(kind) or verify.CHECK_LABELS[kind]
         items.append({"kind": kind, "label": label, "text": text, "anchor": anchor, "file": v.get("file"),
                       "page": v.get("page"), "snippet": v.get("source_text") or ""})
 
@@ -206,7 +269,7 @@ def attention(view: dict) -> list[dict]:
             row_checks.add(r["check"]["code"])
         for side, where in (("project", "loyihani"), ("conclusion", "xulosani")):
             if r[f"agreement_{side}"] == "mismatch":
-                add("mismatch", f"{label}: {where} ikki model turlicha o'qidi", anchor, r[side])
+                add("models", f"{label}: {where} ikki model turlicha o'qidi", anchor, r[side])
 
     for i, r in enumerate(view["scalar_rows"], 1):
         row(r["label"], r, f"f-s{i}")
@@ -214,9 +277,11 @@ def attention(view: dict) -> list[dict]:
         for fi, r in enumerate(b["fields"], 1):
             row(f"{b['title']} — {r['label']}", r, f"f-b{bi}-{fi}")
     for c in view["checks"]:
-        if c["status"] in ("mismatch", "warning") and c["code"] not in row_checks and not c["code"].startswith("hb_row"):
+        if c["code"] == "model_agreement":
+            continue  # each disagreement is already listed above, field by field
+        if c["status"] in ("mismatch", "warning") and c["code"] not in row_checks and not c["code"].startswith(("hb_row", "site_")):
             add(c["status"], c["name"], "checks")
-    order = {"conflict": 0, "mismatch": 0, "unverified": 1, "warning": 2}
+    order = {"conflict": 0, "mismatch": 0, "models": 1, "unverified": 1, "warning": 2}
     return sorted(items, key=lambda x: order[x["kind"]])
 
 
@@ -321,6 +386,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             raise HTTPException(409, "Ish hali tayyor emas")
         if editable and job["status"] == "finalized":
             raise HTTPException(409, "Ish yakunlangan, o'zgartirib bo'lmaydi")
+        if editable and job["status"] in ("queued", "running"):
+            raise HTTPException(409, "Ish qayta ishlanmoqda — tugashini kuting")
         return job
 
     def decimal_field(text: str, name: str, minimum: Decimal | None = None) -> Decimal:
@@ -394,13 +461,14 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         saved = job["calc"] or {}
         return {} if saved == OLD_DEFAULT_CALC else saved
 
-    def build_view(job: dict) -> dict:
-        """Assessment, the system's recommendation, and the state of staff decisions."""
+    def build_view(job: dict, chosen: dict | None = None) -> dict:
+        """Assessment, the system's recommendation, and the state of staff decisions.
+        `chosen`: coefficients picked in a request that is not stored yet (the object type changes how Hb is counted)."""
         names = {r["key"]: r["value"] for r in store.reference_rows() if r["kind"] == "room_name"}
         a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["matches"], names)
         a["plan_index"] = plan_index(job)
         rec = decide.recommend(a, description(job), load_reference(), job["permitted_floors"],
-                               saved_calc(job).get("ko") or None)
+                               (chosen or {}).get("ko") or saved_calc(job).get("ko") or None)
         a["recommendation"] = rec
         decisions = store.decisions(job["id"])
         locked = job["status"] == "finalized"
@@ -762,15 +830,23 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         return sheet
 
     def approve_job(job_id: int, user: str, calc: dict, contract_number: str = "", contract_date: str = "") -> dict:
-        """Accept the recommendation for every volume nobody decided otherwise, then finalize."""
+        """Accept the recommendation for every volume nobody decided otherwise, then finalize.
+        Every reason to refuse is checked first: a refused approval stores nothing."""
         job = get_job(job_id, need_result=True, editable=True)
-        save_calc(job_id, calc, build_view(job)["recommendation"])
-        view = build_view(get_job(job_id))  # the object type just chosen changes how Hb is counted
+        view = build_view(job, calc)
         pending = [c for c in volumes.VOLUME_CODES if not view["decisions"][c]["valid"]]
         without = [c for c in pending if view["volumes"][c]["auto"]["value"] is None]
         if without:
             raise HTTPException(409, "Tizim bu hajmlar uchun taklif bera olmadi: " + ", ".join(without)
                                 + " — qiymatini kiriting")
+        if view["unreviewed"]:
+            raise HTTPException(409, f"Loyiha va xulosa o'rtasidagi {len(view['unreviewed'])} ta farq tekshirilmagan: "
+                                + "; ".join(d["label"] for d in view["unreviewed"][:5]))
+        trial = compute_fee(view, calc, proposed=True)  # FeeError (422) here, before any write
+        if trial["undecided"]:
+            raise HTTPException(409, "Tanlanmagan koeffitsiyentlar bor: " + ", ".join(g.capitalize() for g in trial["undecided"]))
+        save_calc(job_id, calc, build_view(job)["recommendation"])
+        view = build_view(get_job(job_id))
         for code in pending:
             auto = view["volumes"][code]["auto"]
             store.set_decision(job_id, code, "confirmed", auto["value"], auto["value"], "", user)

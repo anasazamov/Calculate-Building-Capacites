@@ -113,7 +113,7 @@ input:disabled, select:disabled { background: var(--sunken); color: var(--muted)
 .badge.ok, .badge.accepted, .badge.match, .badge.finalized {
   background: var(--ok-soft); color: var(--ok); border-color: var(--ok-line); }
 .badge.ready { background: var(--brand-soft); color: var(--brand-hover); border-color: var(--brand-line); }
-.badge.rounding, .badge.warning, .badge.unverified, .badge.not_run, .badge.only_1, .badge.only_2, .badge.queued,
+.badge.models, .badge.rounding, .badge.warning, .badge.unverified, .badge.not_run, .badge.only_1, .badge.only_2, .badge.queued,
 .badge.running, .badge.stale { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 .badge.mismatch, .badge.conflict, .badge.failed, .badge.bad {
   background: var(--bad-soft); color: var(--bad); border-color: var(--bad-line); }
@@ -265,6 +265,8 @@ pre.error { background: #1d2430; color: #ffd7d2; padding: 12px; border-radius: 8
 .attention li:last-child { border-bottom: 0; }
 .attention li a { margin-left: auto; white-space: nowrap; font-size: 13px; }
 .diffs td { vertical-align: top; }
+.diffs th.act { width: 130px; }
+.diffs .btn, .diffs .badge { white-space: nowrap; }
 .diffs tr.reviewed { background: var(--ok-soft); }
 .diffs tr.reviewed td { color: var(--text-2); }
 .w-diff { background: #ffe1a6; border-radius: 3px; padding: 0 2px; font-weight: 600; color: var(--text); }

@@ -112,7 +112,7 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
             "fee": fee_data.get("result"), "fee_error": fee_data.get("error"),
             "open": rec["open"] if not fee_data.get("result") else [], "assumptions": rec["assumptions"],
             "exemptions": rec["exemptions"], "expertise": view.get("expertise"), "attention": view["attention"],
-            "differences": [{k: d[k] for k in ("key", "label", "project", "conclusion", "delta", "percent", "review")}
+            "differences": [{k: d[k] for k in ("key", "label", "project", "conclusion", "delta", "percent", "used", "note", "review")}
                             | {"project_source": source(d["project_source"]), "conclusion_source": source(d["conclusion_source"])}
                             for d in view["differences"]],
             "norms": view["norms"], "coverage": view["coverage"],
@@ -196,6 +196,17 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
         h.store.review_difference(job_id, key, user, body.note.strip()[:300])
         h.store.audit(job_id, user, "difference_reviewed", target=found[0]["label"], old=found[0]["conclusion"],
                       new=found[0]["project"], reason=body.note.strip()[:300])
+        return recommendation(h.get_job(job_id))
+
+    @router.delete("/jobs/{job_id}/differences/{key}")
+    def unreview_difference(job_id: int, key: str, actor: str = "", name: str = Depends(client)) -> dict:
+        """Take a difference mark back."""
+        job = h.get_job(job_id, need_result=True, editable=True)
+        found = [d for d in h.build_view(job)["differences"] if d["key"] == key]
+        if not found:
+            raise HTTPException(404, "Bunday farq yo'q")
+        h.store.unreview_difference(job_id, key)
+        h.store.audit(job_id, who(name, actor), "difference_unreviewed", target=found[0]["label"])
         return recommendation(h.get_job(job_id))
 
     @router.post("/jobs/{job_id}/approve")

@@ -96,5 +96,9 @@ def test_reference_data_through_the_api(api: TestClient, sample_dir: Path):
     for d in rec["differences"]:
         api.put(f"/api/v1/jobs/{job['id']}/differences/{d['key']}", headers=KEY, json={})
     assert api.get(f"/api/v1/jobs/{job['id']}/recommendation", headers=KEY).json()["ready_to_approve"]
+    first = rec["differences"][0]["key"]
+    undone = api.delete(f"/api/v1/jobs/{job['id']}/differences/{first}", headers=KEY, params={"actor": "Operator"})
+    assert undone.status_code == 200 and not undone.json()["ready_to_approve"]
+    assert api.delete(f"/api/v1/jobs/{job['id']}/differences/0000000000000000", headers=KEY).status_code == 404
     assert api.put("/api/v1/reference/central-streets", headers=KEY,
                    json={"settlement": "Samarqand", "streets": ["X"], "basis": "sinov"}).status_code == 400
