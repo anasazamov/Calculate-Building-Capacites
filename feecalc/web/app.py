@@ -82,10 +82,10 @@ def seconds_since(stamp: str | None) -> int | None:
     return max(0, int((datetime.now() - datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S")).total_seconds()))
 
 
-def coverage(result: dict) -> list[dict]:
-    """How much of each document a model actually read: pages sent in a request, and the rest by sheet kind."""
+def coverage(result: dict, plan_sheets: list[dict]) -> list[dict]:
+    """How much of each document was read: pages sent to a model or read by code, and the rest by sheet kind."""
     requests = [r for doc in ("project", "conclusion") for r in result[doc].get("model1", {}).get("requests", [])]
-    read = {(r["file"], n) for r in requests for n in r["pages"]}
+    read = {(r["file"], n) for r in requests for n in r["pages"]} | {(s["file"], s["page"]) for s in plan_sheets if s["rooms"]}
     out: list[dict] = []
     for f in result["files"]:
         skipped: dict[str, int] = {}
@@ -277,6 +277,17 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             descriptions[job["id"]] = pipeline.object_description(ingest.ingest(path)) if path.exists() else None
         return descriptions[job["id"]]
 
+    plan_cache: dict[int, list[dict]] = {}  # for jobs read before plans were stored in the result
+
+    def plan_sheets(job: dict) -> list[dict]:
+        result = job["result"]
+        if "plans" in result:
+            return result["plans"]
+        if job["id"] not in plan_cache:
+            present = all(Path(f["path"]).exists() for f in result["files"])
+            plan_cache[job["id"]] = pipeline.read_plans(result["files"]) if present else []
+        return plan_cache[job["id"]]
+
     def saved_calc(job: dict) -> dict:
         saved = job["calc"] or {}
         return {} if saved == OLD_DEFAULT_CALC else saved
@@ -301,7 +312,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         a["decisions"] = states
         a["all_confirmed"] = all(s["valid"] for s in states.values())
         a["attention"] = attention(a)
-        a["coverage"] = coverage(job["result"])
+        a["plans"] = plan_sheets(job)
+        a["coverage"] = coverage(job["result"], a["plans"])
         a["norms"] = norms.check(a, description(job), knowledge)
         return a
 

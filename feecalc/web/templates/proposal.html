@@ -75,7 +75,8 @@
         O'qilmagan: {% for kind, n in f.skipped.items() %}{{ kind | lower }} — {{ n }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.</p>
       {% endfor %}
       {% if not view.has_project %}<p class="flag">Loyiha berilmagan: tavsiya faqat xulosaga tayanadi.</p>{% endif %}
-      <p class="hint" style="margin:0">Hozircha tizim jadvalli varaqlarni (umumiy ma'lumotlar, eksplikatsiya, pardozlash jadvali) va xulosani o'qiydi; chizma varaqlaridan (qavat rejasi, kesim, fasad) faqat sath belgilari olinadi.</p>
+      {% if view.plans %}<p>Qavat rejalari: {{ view.plans | selectattr('rooms') | list | length }} ta varaqdan {{ view.plans | sum(attribute='count') }} ta xona yozuvi koordinata orqali o'qildi. <a href="/jobs/{{ job.id }}/review#plans">Ko'rish</a></p>{% endif %}
+      <p class="hint" style="margin:0">Jadvalli varaqlar va xulosani model o'qiydi; qavat rejalaridagi xona yozuvlari va kesimdagi sath belgilari matn qatlamidan kod bilan o'qiladi. Fasad va boshqa chizmalar o'qilmaydi.</p>
     </div>
 
     {% if view.norms %}

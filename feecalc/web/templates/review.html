@@ -245,6 +245,23 @@
   </div>
 </details>
 
+{% if view.plans %}
+<details class="section" id="plans">
+  <summary>Qavat rejalaridan o'qilgan xonalar <span class="count">{{ view.plans | length }} ta varaq, {{ view.plans | sum(attribute='count') }} ta yozuv</span></summary>
+  <div class="body">
+    <p class="hint">Chizmadagi har bir xona yozuvi (nomi va ostidagi maydoni) matn qatlamidan koordinata bo'yicha juftlab o'qilgan — model ishlatilmagan. Yozuvni bossangiz, chapda o'sha varaq ochiladi. Bu maydonlar hajmlarga avtomatik qo'shilmaydi: bitta reja bir necha qavatga tegishli bo'lishi va bir qavat ikki varaqda takrorlanishi mumkin; ular jadvaldagi qiymatlarni solishtirish uchun.</p>
+    {% for s in view.plans %}
+    <details class="sub"><summary>{{ s.page }}-sahifa: {{ s.rooms | length }} ta yozuv, jami {{ s.area | num }} m²{% for k, v in s.by_category.items() if k != 'other' %} · {{ k }} {{ v | num }} m²{% endfor %}{% if s.unnamed %} · <span class="flag">{{ s.unnamed }} tasining nomi topilmadi</span>{% endif %}</summary>
+      <div class="body">{% if s.rooms %}<div class="tablewrap"><table>
+        <tr><th>Xona</th><th class="n">Maydon, m²</th><th>Toifa</th></tr>
+        {% for r in s.rooms %}<tr class="src" tabindex="0" data-file="{{ r.file }}" data-page="{{ r.page }}" data-snippet="{{ r.source_text }}">
+          <td>{{ r.name or '— nomi topilmadi —' }}</td><td class="n">{{ r.area | num }}</td><td>{{ r.category if r.category != 'other' else 'boshqa' }}</td></tr>{% endfor %}
+      </table></div>{% else %}<p class="muted">Bu varaqda «nom + maydon» ko'rinishidagi yozuv topilmadi (xonalar raqamlangan va jadvalda berilgan bo'lishi mumkin).</p>{% endif %}</div></details>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
 <details class="section" id="site">
   <summary>Hudud ko'rsatkichlari <span class="count">{{ (view.site.project | length) + (view.site.conclusion | length) }} ta</span></summary>
   <div class="body"><div class="tablewrap"><table>

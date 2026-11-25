@@ -15,7 +15,7 @@ from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
 
-from . import classify, extract, ingest, llm, verify, volumes
+from . import classify, extract, ingest, llm, plans, verify, volumes
 from .fee import fmt_num
 
 STAGES: tuple[tuple[str, str], ...] = (
@@ -149,9 +149,23 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         "prompt_version": extract.PROMPT_VERSION,
         "project": project, "conclusion": conclusion,
         "category_suggestions": suggestions, "level_marks": marks, "warnings": warnings,
-        "object": object_description(conclusion_pages),
+        "object": object_description(conclusion_pages), "plans": read_plans(files),
         "timing": {k: round(v, 2) for k, v in timing.items()},
     }
+
+
+# ---------- floor plans, read by code from the text layer ----------
+def read_plans(files: list[dict]) -> list[dict]:
+    """Room labels of every floor-plan sheet of the project (see plans.py). `files` is result["files"]."""
+    out: list[dict] = []
+    for f in files:
+        if f["role"] != "project":
+            continue
+        for p in f["pages"]:
+            if (p["sheet"] or {}).get("kind") == "floor_plan" and not p["textless"]:
+                rooms = plans.plan_rooms(Path(f["path"]), p["number"])
+                out.append({"file": f["name"], "page": p["number"], "rooms": rooms, **plans.summary(rooms)})
+    return out
 
 
 # ---------- the object as the conclusion describes it (pure code) ----------
