@@ -84,7 +84,10 @@ def test_override_height_volume_category_and_inclusion():
     base = volumes.build_components(p, HEIGHTS, {"Бассейн": "other"}, {})
     tech, pump, pool = base
     assert not pump["included"] and "takror" in pump["exclusion_note"]
-    assert pool["category_method"] == "model" and pool["needs_confirmation"]
+    # not clearly named as technical or common-use: usable area, no deduction, nothing left for staff to confirm
+    assert (pool["category"], pool["category_method"], pool["needs_confirmation"]) == ("other", "not_explicit", False)
+    guessed = volumes.build_components(p, HEIGHTS, {"Бассейн": "Hu"}, {})[2]
+    assert guessed["category"] == "other" and "model taxmini: Hu" in guessed["category_note"]
     ov = {tech["id"]: {"height": "4.7", "reason": "kesim bo'yicha"},
           pump["id"]: {"included": True, "reason": "alohida xona"},
           pool["id"]: {"category": "Hu", "reason": "umumiy"}}

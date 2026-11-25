@@ -183,11 +183,12 @@ def build_components(project: dict, heights: list[Height], suggestions: dict[str
             # a plain level row ("1-этаж", "Подвал ..."): not a room group
             category, method, needs, note = "other", "level_row", False, "Sath qatori (xona guruhi emas)"
         if category is None:
-            if name in suggestions:
-                category, method, note = suggestions[name], "model", "Lug'atda yo'q; model taklifi"
-            else:
-                category, method, note = "other", "none", "Lug'atda yo'q; toifa aniqlanmadi"
-            needs = True
+            # Rule: a room or area that the documents do not clearly name as parking, technical or common-use
+            # is ordinary usable area and is not deducted. A model's guess is shown, never applied.
+            guess = suggestions.get(name)
+            category, method, needs = "other", "not_explicit", False
+            note = ("Texnik yoki umumiy foydalanish deb aniq ko'rsatilmagan — foydalanish maydoni deb olindi"
+                    + (f" (model taxmini: {guess})" if guess and guess != "other" else ""))
         cid = component_id(origin, area_v.get("file"), area_v.get("page"), name, area_v.get("value"))
         ov = overrides.get(cid, {})
         if ov.get("category"):

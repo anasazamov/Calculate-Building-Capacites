@@ -187,6 +187,10 @@ Yakunlangan ishni tuzatish uchun «Qayta ochish» amali qo'shildi (sababi bilan,
 Cheklov: usul bitta haqiqiy ishda tekshirildi; reja sarlavhalari boshqacha yozilgan albomlarda ishlamasligi mumkin
 (u holda tizim eski yo'lga qaytadi va hisoblanmagan qatorlarni sanab ko'rsatadi).
 
+**Qoida (buyurtmachi, 25.11.2026):** hujjatda avtoturargoh, texnik yoki umumiy foydalanish deb aniq ko'rsatilmagan xona
+va maydon — foydalanish maydoni; u chegirilmaydi. Model taxmini ko'rsatiladi, lekin qo'llanmaydi va xodimdan
+tasdiq so'ralmaydi (`volumes.build_components`).
+
 ## 3. Sinov natijalari
 
 ### 3.1. Hisob yadrosi
