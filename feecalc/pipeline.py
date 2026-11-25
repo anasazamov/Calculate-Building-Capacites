@@ -336,7 +336,7 @@ def _building_heights(building: dict) -> tuple[list[Decimal], str]:
 
 
 def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_floors: int | None = None,
-           matches: dict[str, int] | None = None) -> dict:
+           matches: dict[str, int] | None = None, room_names: dict[str, str] | None = None) -> dict:
     """Combine the extraction result with staff decisions. Pure code, no model."""
     overrides = overrides or {}
     has_project = bool(result["project"])
@@ -470,7 +470,7 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
     paired = [pair for pair in pairs if pair["p"] is not None and pair["c"] is not None]
     album_building = c1["buildings"][paired[0]["c"]] if (len(p1["buildings"]) == 1 and paired) else None
     heights = volumes.collect_heights(p1["floor_heights"], album_building["floor_heights"] if album_building else [])
-    components = volumes.build_components(p1, heights, result.get("category_suggestions", {}), overrides)
+    components = volumes.build_components(p1, heights, result.get("category_suggestions", {}), overrides, room_names)
     all_floors = [f for f in (_num(b["floors"]) for b in c1["buildings"] + p1["buildings"]) if f is not None]
     if len(p1["buildings"]) == 1:
         floors = _num(p1["buildings"][0]["floors"]) or (_num(album_building["floors"]) if album_building else None)

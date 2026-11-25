@@ -324,7 +324,7 @@ def plan_volume(view: dict, code: str) -> dict | None:
         return None                                                # a storey without its plan: do not extrapolate
     parts: list[tuple[Decimal, str]] = []
     for c in rooms:
-        if c["category"] != code or not str(c["category_method"]).startswith("dictionary"):
+        if c["category"] != code or not str(c["category_method"]).startswith(("dictionary", "reference", "staff")):
             continue
         sheet = index[(c["file"], c["page"])]
         count, height = (1, basement) if sheet["level"] == "basement" else (len(sheet["floors"]), storey)
@@ -333,7 +333,7 @@ def plan_volume(view: dict, code: str) -> dict | None:
         parts.append((volume, f"{sheet['block'] + '-blok, ' if sheet['block'] else ''}{where}: {c['name']} {fmt_num(Decimal(c['area']))} m²"
                               + (f" × {count} qavat" if count > 1 else "") + f" × {fmt_num(height)} m = {fmt_num(volume)}"))
     total = sum((v for v, _ in parts), Decimal(0))
-    suggested = [c for c in rooms if c["category"] == code and not str(c["category_method"]).startswith("dictionary")]
+    suggested = [c for c in rooms if c["category"] == code and str(c["category_method"]) == "model"]
     assumptions = [f"Qavat rejalari bo'yicha hisoblandi ({len(index)} ta reja varag'i, {len(blocks)} ta blok); {basis}"]
     assumptions += [text for _, text in parts]
     if suggested:

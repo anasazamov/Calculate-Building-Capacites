@@ -51,7 +51,7 @@
     <td class="n">{{ c.area | num }}</td>
     <td><b>{{ c.category if c.category != 'other' else 'boshqa' }}</b>
       {% if c.needs_confirmation %}<span class="badge unverified">xodim tasdiqlashi kerak</span>{% endif %}
-      <div class="small muted">{{ {'dictionary': "lug'at bo'yicha", 'dictionary:mixed': "lug'at bo'yicha (aralash)", 'model': 'model taklifi', 'staff': 'xodim belgilagan', 'level_row': 'sath qatori', 'none': 'aniqlanmadi', 'not_explicit': 'foydalanish maydoni'}[c.category_method] }}{% if c.category_note %}: {{ c.category_note }}{% endif %}</div></td>
+      <div class="small muted">{{ {'dictionary': "lug'at bo'yicha", 'dictionary:mixed': "lug'at bo'yicha (aralash)", 'model': 'model taklifi', 'staff': 'xodim belgilagan', 'level_row': 'sath qatori', 'none': 'aniqlanmadi', 'not_explicit': 'foydalanish maydoni', 'reference': "ma'lumotnoma bo'yicha"}[c.category_method] }}{% if c.category_note %}: {{ c.category_note }}{% endif %}</div></td>
     <td><div class="formula">{{ c.formula }}</div>
       <div class="small muted">Balandlik: {{ (c.height | num) ~ ' m' if c.height else 'aniqlanmagan' }}{% if c.height_note %} — {{ c.height_note }}{% endif %}</div>
       {% if c.override %}<div class="small">✎ {{ c.override.user }}, {{ c.override.time }}: {{ c.override.reason }}</div>{% endif %}</td>

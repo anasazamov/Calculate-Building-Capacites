@@ -129,6 +129,11 @@ _DICTIONARY: dict[str, tuple[str, ...]] = {
 }
 
 
+def name_key(name: str) -> str:
+    """How a room name is looked up in the staff-kept list of names: case, spacing and apostrophes ignored."""
+    return _normalize(name)
+
+
 def _normalize(name: str) -> str:
     n = name.lower().replace("ё", "е")
     n = re.sub(r"[ʼ’`‘]", "'", n)

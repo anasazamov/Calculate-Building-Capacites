@@ -421,3 +421,24 @@ def test_contract_designer_from_upload_to_a_filled_contract(client: TestClient, 
     from feecalc import contract
     assert "ART-7" in text and contract.money(fee_value) in text and "Shartnoma namunasi" in text
     assert "Shartnoma (PDF)" in unescape(client.get(f"/jobs/{job}/sheet").text)
+
+
+def test_a_room_name_decided_once_applies_to_every_job(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    from feecalc import classify, pipeline
+    result = client.app.state.store.job(job)["result"]  # type: ignore[attr-defined]
+    rooms = [r["name"] for r in result["project"]["model1"]["rooms"]] + [b["name"] for b in result["project"]["model1"]["area_breakdown"]]
+    unknown = [n for n in rooms if classify.room_category(n).category is None]
+    page = unescape(client.get("/reference").text)
+    assert "Xona nomlari" in page
+    if unknown:                                                    # the demo album has names outside the dictionary
+        name = unknown[0]
+        assert name in page
+        assert client.post("/reference/room-name", data={"name": name, "category": "Ht", "basis": ""}).status_code == 400
+        assert client.post("/reference/room-name", data={"name": name, "category": "Ht", "basis": "Loyihachi izohi"}).status_code == 303
+        names = {r["key"]: r["value"] for r in client.app.state.store.reference_rows() if r["kind"] == "room_name"}  # type: ignore[attr-defined]
+        view = pipeline.assess(result, room_names=names)
+        row = [c for c in view["components"] if c["name"] == name][0]
+        assert (row["category"], row["category_method"], row["needs_confirmation"]) == ("Ht", "reference", False)
+        assert pipeline.assess(result)["components"][view["components"].index(row)]["category"] == "other"

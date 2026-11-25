@@ -329,7 +329,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
 
     def build_view(job: dict) -> dict:
         """Assessment, the system's recommendation, and the state of staff decisions."""
-        a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["matches"])
+        names = {r["key"]: r["value"] for r in store.reference_rows() if r["kind"] == "room_name"}
+        a = pipeline.assess(job["result"], store.overrides(job["id"]), job["permitted_floors"], job["matches"], names)
         a["plan_index"] = plan_index(job)
         rec = decide.recommend(a, description(job), load_reference(), job["permitted_floors"],
                                saved_calc(job).get("ko") or None)
@@ -938,7 +939,8 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             "zones": [r for r in rows if r["kind"] == "zone"], "log": store.reference_log(),
             "kz_options": [o for o in fee.GROUPS["kz"] if o.value is not None],
             "has_template": contract_template().exists(), "placeholders": contract.PLACEHOLDERS,
-            "documents": knowledge.documents()})
+            "documents": knowledge.documents(), "unknown_names": unknown_names(),
+            "room_names": [r for r in rows if r["kind"] == "room_name"]})
 
     def reference_saved(message: str) -> Response:
         return flash(RedirectResponse("/reference", status_code=303), message)
@@ -976,10 +978,38 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
             store.set_reference("central_street", f"{place}|{decide.street_key(name)}", name[:120], why, user)
         return reference_saved(f"{len(names)} ta ko'cha saqlandi")
 
+    def unknown_names() -> list[dict]:
+        """Room names of recent jobs that are neither in the built-in dictionary nor decided by staff."""
+        decided = {r["key"] for r in store.reference_rows() if r["kind"] == "room_name"}
+        seen: dict[str, dict] = {}
+        for listed in store.jobs()[:40]:
+            job = store.job(listed["id"])
+            if not job or not job["result"] or not job["result"]["project"]:
+                continue
+            project = job["result"]["project"]["model1"]
+            guesses = job["result"].get("category_suggestions", {})
+            for name in [b["name"] for b in project.get("area_breakdown", [])] + [r["name"] for r in project.get("rooms", [])]:
+                key = classify.name_key(str(name))
+                if key in decided or classify.room_category(str(name)).category is not None:
+                    continue
+                entry = seen.setdefault(key, {"key": key, "name": str(name), "count": 0, "jobs": set(), "guess": guesses.get(name)})
+                entry["count"] += 1
+                entry["jobs"].add(job["id"])
+        return sorted(({**e, "jobs": sorted(e["jobs"])} for e in seen.values()), key=lambda e: -e["count"])
+
+    @app.post("/reference/room-name")
+    def reference_room_name(request: Request, name: str = Form(...), category: str = Form(...), basis: str = Form("")) -> Response:
+        """Decide once what a room name means; it then applies to every job, old and new."""
+        user = require_staff(request)
+        if category not in classify.CATEGORIES or not classify.name_key(name):
+            raise HTTPException(400, "Nom yoki toifa noto'g'ri")
+        store.set_reference("room_name", classify.name_key(name), category, reason_field(basis), user)
+        return flash(RedirectResponse("/reference#names", status_code=303), "Nom ro'yxatga qo'shildi")
+
     @app.post("/reference/delete")
     def reference_delete(request: Request, kind: str = Form(...), key: str = Form(...)) -> Response:
         user = require_staff(request)
-        if kind not in ("setting", "zone", "central_street"):
+        if kind not in ("setting", "zone", "central_street", "room_name"):
             raise HTTPException(400, "Noma'lum yozuv turi")
         store.delete_reference(kind, key, user)
         return reference_saved("O'chirildi")

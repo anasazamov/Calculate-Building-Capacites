@@ -7,6 +7,31 @@
 <h1>Ma'lumotnoma</h1>
 <p class="lead">Tizim tavsiya berishda hujjatdagi yozuvlar bilan birga shu yerdagi ma'lumotlarga tayanadi. Har bir yozuvning asosi yoziladi; kim va qachon o'zgartirgani saqlanadi. Yozuv o'zgarsa, hali tasdiqlanmagan barcha ishlarning tavsiyasi yangilanadi.</p>
 
+<div class="card" id="names">
+  <h2>Xona nomlari <span class="muted" style="font-weight:400">(Ha, Ht, Hu toifalari)</span></h2>
+  <p>Hujjatda avtoturargoh, texnik yoki umumiy foydalanish deb aniq yozilmagan xona foydalanish maydoni hisoblanadi va chegirilmaydi. Quyida oxirgi ishlarda uchragan, tizim lug'atida yo'q nomlar turibdi. Nomga bir marta toifa bersangiz, u barcha ishlarga — eskisiga ham, yangisiga ham — qo'llanadi.</p>
+  {% if unknown_names %}
+  <div class="tablewrap" style="max-height:420px;overflow:auto"><table>
+    <tr><th>Hujjatdagi nom</th><th class="n">Necha marta</th><th>Ishlar</th><th>Model taxmini</th><th>Toifa berish</th></tr>
+    {% for u in unknown_names[:80] %}
+    <tr><td>{{ u.name }}</td><td class="n">{{ u.count }}</td><td class="small">{% for j in u.jobs[:5] %}<a href="/jobs/{{ j }}/review">№{{ j }}</a>{{ ', ' if not loop.last }}{% endfor %}</td>
+      <td class="small muted">{{ u.guess if u.guess and u.guess != 'other' else '—' }}</td>
+      <td><form method="post" action="/reference/room-name" class="row" style="gap:6px;align-items:center">
+        <input type="hidden" name="name" value="{{ u.name }}">
+        <select name="category" aria-label="Toifa">{% for k in CATEGORIES %}<option value="{{ k }}" {% if k == 'other' %}selected{% endif %}>{{ k if k != 'other' else 'boshqa' }} — {{ CATEGORY_LABELS[k] }}</option>{% endfor %}</select>
+        <input type="text" name="basis" required minlength="3" placeholder="asosi" style="width:150px">
+        <button type="submit" class="btn small">Saqlash</button></form></td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="callout ok" style="margin:0">Oxirgi ishlarda lug'atda yo'q nom uchramadi.</p>{% endif %}
+  {% if room_names %}<h3>Siz toifa bergan nomlar — {{ room_names | length }} ta</h3>
+  <ul class="reflist">{% for r in room_names %}
+    <li><span><b>{{ r.key }}</b> → {{ r.value if r.value != 'other' else 'boshqa' }} <span class="small muted">— {{ r.basis }} ({{ r.user }}, {{ r.time }})</span></span>
+      <form method="post" action="/reference/delete"><input type="hidden" name="kind" value="room_name"><input type="hidden" name="key" value="{{ r.key }}">
+        <button type="submit" class="btn secondary small">O'chirish</button></form></li>{% endfor %}
+  </ul>{% endif %}
+</div>
+
 <div class="refgrid">
 <div>
   <div class="card" id="streets">
