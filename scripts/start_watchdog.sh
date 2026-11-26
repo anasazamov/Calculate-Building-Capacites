@@ -1,12 +1,16 @@
 #!/bin/bash
 # Start the watchdog (which starts and supervises the vLLM server) and wait until the server is healthy.
-# usage: scripts/start_watchdog.sh [model1] ; stop with scripts/stop_watchdog.sh model1
-# There is one reading model (Gemma, scripts/vllm_model1.sh, port 8001).
+# usage: scripts/start_watchdog.sh model1|vlm ; stop with scripts/stop_watchdog.sh <model>
+# model1: the reading model (Gemma, vllm_model1.sh, port 8001); vlm: the vision model (Qwen3-VL, vllm_vlm.sh, 8002).
+#
+# Start them ONE AFTER ANOTHER (model1 first). Two servers loading at the same moment on a shared card do
+# not respect their memory shares: the one that initialises first takes far more than its share.
 cd "$(dirname "$0")/.." || exit 1
 model="${1:-model1}"
 case "$model" in
   model1) port=8001 ;;
-  *) echo "usage: $0 [model1]"; exit 1 ;;
+  vlm) port=8002 ;;
+  *) echo "usage: $0 model1|vlm"; exit 1 ;;
 esac
 mkdir -p logs
 nohup "${PYTHON:-.venv/bin/python}" scripts/watchdog.py "$model" --launch "scripts/vllm_${model}.sh" \

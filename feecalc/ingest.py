@@ -1,10 +1,12 @@
 """Ingest: text layer (with coordinates) and a PNG image for every PDF page.
 
-Text inside raster images (scans, pasted pictures of tables) is read with OCR (Tesseract, Russian and
-Uzbek in both scripts) and added to the page's words with its coordinates, marked `ocr`. From there on it
-is handled like the text layer: the models read it, the verbatim source check runs against it and the
-highlight finds it. Only words Tesseract is confident about are kept; a page that still has no text is
-flagged `textless`.
+Text inside raster images (scans, pasted pictures of tables, raster drawings) is read by the vision model
+(llm.vlm(), Qwen3-VL): it transcribes every line or table cell together with its box on the image, and the
+box is mapped to page points. Those words join the page's words marked `from_image`. From there on they are
+handled like the text layer: the reading model reads them, the verbatim source check runs against them, the
+highlight finds them and floor plans are read from their coordinates. The vision model also says what the
+image is (a table, text, a drawing, a photo) and whether its text is legible, so no list of what to read is
+needed. A page that still has no text is flagged `textless`.
 """
 from __future__ import annotations
 
@@ -12,15 +14,16 @@ import functools
 import hashlib
 import json
 import os
-import subprocess
-import tempfile
 import re
 import statistics
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pymupdf
+
+from . import llm
 
 TEXTLESS_THRESHOLD = 50       # fewer characters than this -> page is "textless"
 IMAGE_LONGEST_SIDE = 2600     # longest side of the PNG, pixels
@@ -28,16 +31,15 @@ IMAGE_MAX_ZOOM = 2.0
 STAMP_WIDTH_PT = 560.0        # GOST title block is 185 mm ~ 524 pt, plus margin
 STAMP_HEIGHT_PT = 200.0       # 55 mm ~ 156 pt, plus margin
 COLUMN_SEP = " | "
-OCR_LANGUAGES = "rus+uzb_cyrl+uzb+eng"
-OCR_DPI = (300, 600)           # read at the image's own resolution, within these bounds
-OCR_MIN_CONFIDENCE = 60       # Tesseract word confidence (0-100); less confident words are dropped
-OCR_TEXT_IMAGE = 75           # median word confidence above which an image holds text (a scan, a table)
-OCR_PROBE_PIXELS = 2_500_000  # a quick first reading (at most this many pixels) decides whether to read in full
-OCR_PROBE_MIN = 55            # below this median at the probe, the image is a picture (photo, drawing)
-OCR_MIN_SHARE = 0.01          # images smaller than this share of the page are not read
-OCR_MAX_PIXELS = 40_000_000   # a huge image is read at a lower resolution
-OCR_VERSION = 5               # part of the cache key: raise it when the OCR settings change
-OCR_CACHE = Path(os.environ.get("FEECALC_DATA", "data")) / "ocr"
+IMAGE_MIN_SHARE = 0.01       # images smaller than this share of the page are not read
+VLM_MAX_SIDE = 2048           # longest side, pixels, of an image sent to the vision model
+VLM_MIN_DPI = 150             # a small image is enlarged to at least this resolution
+VLM_MAX_TOKENS = 12000        # a dense table is long: one item per cell
+VLM_WORKERS = 8               # images of one document read at the same time
+VLM_VERSION = 1               # part of the cache key: raise it when the question or the settings change
+VLM_CACHE = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm"
+VLM_RAW = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm_raw"
+TEXT_KINDS = ("table", "text", "stamp", "drawing")  # images whose writing is read into the page
 
 # PyMuPDF 2.1 routes find_tables() through its bundled layout model (ONNX, CPU) whenever the
 # pymupdf-layout package is installed, which it is as a hard dependency. On drawing sheets that
@@ -59,7 +61,7 @@ class Word:
     x1: float
     y1: float
     text: str
-    ocr: bool = False         # read from a raster image by OCR, not from the text layer
+    from_image: bool = False  # read from a raster image by the vision model, not from the text layer
 
 
 @dataclass
@@ -96,8 +98,8 @@ class Page:
     image_ratio: float = 0.0  # share of the page area covered by raster images
     image_path: str | None = None
     image_zoom: float = 1.0
-    ocr_words: int = 0        # how many of the words came from OCR
-    ocr_unclear: int = 0      # images that look like text but OCR could not read them confidently
+    image_words: int = 0      # how many of the words the vision model read from images
+    image_unclear: int = 0    # images that hold writing the vision model calls illegible
 
 
 def sha256_file(path: Path) -> str:
@@ -123,82 +125,164 @@ def _image_ratio(page: pymupdf.Page) -> float:
     return min(1.0, covered / area)
 
 
-# ---------- OCR of raster images ----------
-def _tesseract(png: bytes) -> list[tuple[float, float, float, float, str, float]]:
-    """Words of an image: (x0, y0, x1, y1 in pixels, text, confidence)."""
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / "region.png"
-        path.write_bytes(png)
-        out = subprocess.run(["tesseract", str(path), "stdout", "-l", OCR_LANGUAGES, "--psm", "11", "tsv"],
-                             capture_output=True, text=True, check=True).stdout
-    words = []
-    for line in out.splitlines()[1:]:
-        cols = line.split("\t")
-        if len(cols) == 12 and cols[11].strip() and float(cols[10]) >= 0:
-            left, top, width, height = (float(cols[i]) for i in (6, 7, 8, 9))
-            words.append((left, top, left + width, top + height, cols[11].strip(), float(cols[10])))
-    return words
+# ---------- raster images, read by the vision model ----------
+VLM_SYSTEM = """You read the writing inside ONE image cut from a construction project album or an expertise
+conclusion (Uzbek in Latin or Cyrillic script, Russian). Return JSON only.
+
+- kind: what the image is. "table" (a table or a list of figures), "text" (a scanned page or paragraph),
+  "stamp" (a drawing's title block), "drawing" (a plan, section or facade with labels and dimensions),
+  "photo" (a photograph or satellite picture), "other".
+- legible: false when the image holds writing you cannot read with certainty (too small, blurred, cut off).
+- items: every piece of writing, in reading order, each with its box. For a table give every cell as its own
+  item (an empty cell is left out); for running text give each visual line as one item; on a drawing give
+  every label, room name, area and dimension as its own item. For a photo give nothing.
+- text: exactly as written: the same characters, script, digits, decimal comma or point and spaces. Never
+  translate, correct, complete or guess. Writing you cannot read with certainty is left out, not invented.
+- bbox_2d: [x1, y1, x2, y2] on a 0-1000 grid of this image (0,0 is the top left corner, 1000,1000 the bottom
+  right), tight around the writing."""
+
+VLM_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "kind": {"type": "string", "enum": ["table", "text", "stamp", "drawing", "photo", "other"]},
+        "legible": {"type": "boolean"},
+        "items": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"text": {"type": "string"},
+                           "bbox_2d": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 1000},
+                                       "minItems": 4, "maxItems": 4}},
+            "required": ["text", "bbox_2d"], "additionalProperties": False}},
+    },
+    "required": ["kind", "legible", "items"], "additionalProperties": False,
+}
 
 
-def _page_ocr(p: pymupdf.Page, text_words: list[Word]) -> tuple[list[Word], int]:
-    """OCR words of every sizeable image on the page, in page points; words already present in the text
-    layer (a scan with a text layer on top) and unconfident or punctuation-only words are left out."""
-    out: list[Word] = []
-    unclear = 0
+def _image_regions(p: pymupdf.Page) -> list[tuple[pymupdf.Rect, int]]:
+    """Every sizeable image on the page (each placement once) and the resolution to render it at: its own
+    resolution, at least VLM_MIN_DPI, with the longest side at most VLM_MAX_SIDE pixels."""
     area = abs(p.rect) or 1.0
-    seen: set[tuple[float, float, float, float]] = set()
+    out: list[tuple[pymupdf.Rect, int]] = []
+    seen: set[tuple[int, int, int, int]] = set()
     for info in p.get_image_info():
         box = pymupdf.Rect(info["bbox"]) & p.rect
         key = (round(box.x0), round(box.y0), round(box.x1), round(box.y1))
-        if box.is_empty or abs(box) / area < OCR_MIN_SHARE or key in seen:
+        if box.is_empty or abs(box) / area < IMAGE_MIN_SHARE or key in seen:
             continue
         seen.add(key)
-        native = info["width"] / max(box.width / 72, 1e-6) if info.get("width") else OCR_DPI[0]
-        dpi = int(min(OCR_DPI[1], max(OCR_DPI[0], native)))
-        while dpi > 72 and (box.width / 72 * dpi) * (box.height / 72 * dpi) > OCR_MAX_PIXELS:
-            dpi -= 50
-        # A photo or a drawing also yields "words", with low confidence; a scanned table or text yields
-        # confident ones. The image's own median confidence decides, so no list of what to read is needed.
-        probe_dpi = int(min(dpi, (OCR_PROBE_PIXELS / max(box.width / 72 * box.height / 72, 1e-6)) ** 0.5))
-        probe = _tesseract(p.get_pixmap(clip=box, dpi=probe_dpi, alpha=False, colorspace=pymupdf.csGRAY).tobytes("png"))
-        if not probe or statistics.median(w[5] for w in probe) < OCR_PROBE_MIN:
-            continue
-        found = probe if probe_dpi == dpi else _tesseract(
-            p.get_pixmap(clip=box, dpi=dpi, alpha=False, colorspace=pymupdf.csGRAY).tobytes("png"))
-        scale = 72 / dpi if probe_dpi != dpi else 72 / probe_dpi
-        if not found or statistics.median(w[5] for w in found) < OCR_TEXT_IMAGE:
-            unclear += 1  # it passed the probe as text, but not confidently enough to use
-            continue
-        for x0, y0, x1, y1, text, conf in found:
-            # a table rule read as a bracket or bar next to a number: "2457,84]" -> "2457,84"
-            text = re.sub(r"^[\[\(|]+(?=\d)|(?<=\d)[\]\)|]+$", "", text)
-            if conf < OCR_MIN_CONFIDENCE or not re.search(r"[0-9A-Za-zА-Яа-яЁёЎўҚқҒғҲҳ]", text) \
-                    or (len(text) < 2 and not text.isdigit()):
-                continue
-            w = Word(box.x0 + x0 * scale, box.y0 + y0 * scale, box.x0 + x1 * scale, box.y0 + y1 * scale, text, True)
-            cx, cy = (w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2
-            if any(t.x0 <= cx <= t.x1 and t.y0 <= cy <= t.y1 for t in text_words):
-                continue
-            out.append(w)
-    return out, unclear
+        native = info["width"] / max(box.width / 72, 1e-6) if info.get("width") else VLM_MIN_DPI
+        cap = VLM_MAX_SIDE / max(box.width / 72, box.height / 72, 1e-6)
+        out.append((box, max(36, int(min(cap, max(VLM_MIN_DPI, native))))))
+    return out
 
 
-def ocr_words(doc: pymupdf.Document, index: int, pdf_key: str, text_words: list[Word]) -> tuple[list[Word], int]:
-    """OCR words of one page and the number of images that hold unreadable text. Cached on disk by the file's
-    content: OCR takes seconds and every reader of the document (models, highlighting, sheet types) needs it."""
-    cache = OCR_CACHE / f"{pdf_key}_{index + 1}_v{OCR_VERSION}.json"
-    if cache.exists():
-        stored = json.loads(cache.read_text(encoding="utf-8"))
-        return [Word(*w, ocr=True) for w in stored["words"]], stored["unclear"]
-    words, unclear = _page_ocr(_open_page(doc, index), text_words)
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({"words": [[w.x0, w.y0, w.x1, w.y1, w.text] for w in words], "unclear": unclear},
-                                ensure_ascii=False), encoding="utf-8")
-    return words, unclear
+def read_image(png: bytes) -> dict:
+    """What the vision model reads in one image: {"kind", "legible", "items": [{"text", "bbox_2d"}]}.
+    Raises llm.ModelError when the server is down or the answer is malformed: nothing is skipped silently."""
+    m = llm.vlm()
+    if not llm.port_open(m):
+        raise llm.ModelError(f"Rasmlarni o'qiydigan model (VLM) serveri ishlamayapti: {m.url}")
+    return llm.ask(m, VLM_SYSTEM, "Read this image.", VLM_SCHEMA, VLM_MAX_TOKENS, VLM_RAW,
+                   sampling={"temperature": 0.0, "top_p": 1.0, "top_k": 1, "presence_penalty": 0},
+                   images=[png]).data
+
+
+def _split_item(text: str, x0: float, y0: float, x1: float, y1: float) -> list[Word]:
+    """One read item (a cell or a line) as words: the box is shared out by the length of each word, so a
+    highlight lands on the word and the column gaps between cells stay where they are."""
+    tokens = text.split()
+    total = sum(len(t) for t in tokens) + max(len(tokens) - 1, 0)
+    out, pos, width = [], 0, x1 - x0
+    for t in tokens:
+        a = x0 + width * pos / total
+        pos += len(t)
+        out.append(Word(a, y0, x0 + width * pos / total, y1, t, True))
+        pos += 1
+    return out
+
+
+def _cache_path(pdf_key: str, index: int) -> Path:
+    model = re.sub(r"[^\w.-]", "_", llm.vlm().name)
+    return VLM_CACHE / f"{pdf_key}_{index + 1}_{model}_v{VLM_VERSION}.json"
+
+
+def _page_regions_read(answers: list[dict], regions: list[tuple[pymupdf.Rect, int]]) -> dict:
+    """The vision model's answers for one page, in page points (the form kept in the cache)."""
+    words, unclear, kinds = [], 0, []
+    for (box, _dpi), a in zip(regions, answers):
+        kinds.append(a["kind"])
+        if a["kind"] in TEXT_KINDS and not a["legible"]:
+            unclear += 1
+        if a["kind"] not in TEXT_KINDS:
+            continue
+        sx, sy = box.width / llm.VLM_COORD_SCALE, box.height / llm.VLM_COORD_SCALE
+        for item in a["items"]:
+            bx0, by0, bx1, by1 = item["bbox_2d"]
+            if not item["text"].strip() or bx1 <= bx0 or by1 <= by0:
+                continue
+            words += [[w.x0, w.y0, w.x1, w.y1, w.text] for w in _split_item(
+                item["text"], box.x0 + bx0 * sx, box.y0 + by0 * sy, box.x0 + bx1 * sx, box.y0 + by1 * sy)]
+    return {"words": words, "unclear": unclear, "kinds": kinds}
+
+
+Pending = list[tuple[int, list[tuple[pymupdf.Rect, int]], list[bytes]]]
+
+
+def _collect_images(doc: pymupdf.Document, pdf_key: str) -> Pending:
+    """The not yet cached sizeable images of the document, rendered (needs the MuPDF lock, held by the caller)."""
+    pending: Pending = []
+    for i in range(doc.page_count):
+        if _cache_path(pdf_key, i).exists():
+            continue
+        p = _open_page(doc, i)
+        regions = _image_regions(p)
+        if regions:
+            pending.append((i, regions, [p.get_pixmap(clip=box, dpi=dpi, alpha=False).tobytes("png")
+                                         for box, dpi in regions]))
+    return pending
+
+
+def _read_images(pending: Pending, pdf_key: str) -> None:
+    """Send the rendered images to the vision model, several at the same time, and cache the answers.
+    Touches no MuPDF object, so it runs without the lock: the rest of the service keeps working meanwhile."""
+    if not pending:
+        return
+    with ThreadPoolExecutor(max_workers=VLM_WORKERS) as pool:
+        answers = {(i, n): pool.submit(read_image, png) for i, _r, pngs in pending for n, png in enumerate(pngs)}
+        for i, regions, pngs in pending:
+            read = [answers[(i, n)].result() for n in range(len(pngs))]  # an error is raised here
+            _write_cache(pdf_key, i, _page_regions_read(read, regions))
+
+
+def _prefetch_images(doc: pymupdf.Document, pdf_key: str) -> None:
+    _read_images(_collect_images(doc, pdf_key), pdf_key)
+
+
+def _write_cache(pdf_key: str, index: int, data: dict) -> None:
+    path = _cache_path(pdf_key, index)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def image_words(doc: pymupdf.Document, index: int, pdf_key: str, text_words: list[Word]) -> tuple[list[Word], int]:
+    """Words the vision model read from the page's images, in page points, and the number of images whose
+    writing it calls illegible. Cached on disk by the file's content and the model; a word that the text layer
+    already has at that place (a scan with a text layer on top) is left out."""
+    path = _cache_path(pdf_key, index)
+    if not path.exists():
+        _prefetch_images(doc, pdf_key)
+    if not path.exists():
+        return [], 0  # no image on the page is large enough to hold readable writing
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    out = []
+    for x0, y0, x1, y1, text in stored["words"]:
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        if not any(t.x0 <= cx <= t.x1 and t.y0 <= cy <= t.y1 for t in text_words):
+            out.append(Word(x0, y0, x1, y1, text, True))
+    return out, stored["unclear"]
 
 
 def _document_key(doc: pymupdf.Document) -> str:
-    """Content key of an open document (the file's bytes), for the OCR cache."""
+    """Content key of an open document (the file's bytes), for the image-reading cache."""
     path = Path(doc.name)
     stat = path.stat()
     return _file_key(str(path), stat.st_mtime_ns, stat.st_size)
@@ -214,22 +298,26 @@ def read_page(doc: pymupdf.Document, index: int, file_name: str, pdf_key: str = 
     words = [Word(w[0], w[1], w[2], w[3], w[4]) for w in p.get_text("words")]
     text = p.get_text("text")
     ratio = _image_ratio(p)
-    extra, unclear = ocr_words(doc, index, pdf_key or _document_key(doc), words) if ratio > 0 else ([], 0)
+    extra, unclear = image_words(doc, index, pdf_key or _document_key(doc), words) if ratio > 0 else ([], 0)
     if extra:
         words = words + extra
         text = text + "\n" + "\n".join(line.text for line in group_lines(extra))
     count = len(text.strip())
     return Page(file=file_name, number=index + 1, width=p.rect.width, height=p.rect.height, text=text,
                 words=words, char_count=count, textless=count < TEXTLESS_THRESHOLD,
-                image_ratio=round(ratio, 3), ocr_words=len(extra), ocr_unclear=unclear)
+                image_ratio=round(ratio, 3), image_words=len(extra), image_unclear=unclear)
 
 
 def ingest(pdf_path: Path, image_dir: Path | None = None) -> list[Page]:
     """Read all pages of a PDF; when `image_dir` is given also render PNGs."""
     pdf_path = Path(pdf_path)
     pages: list[Page] = []
+    # All images of the document are read at once, not page by page, and without holding the MuPDF lock.
     with MUPDF_LOCK, pymupdf.open(pdf_path) as doc:
         key = _document_key(doc)
+        pending = _collect_images(doc, key)
+    _read_images(pending, key)
+    with MUPDF_LOCK, pymupdf.open(pdf_path) as doc:
         for i in range(doc.page_count):
             page = read_page(doc, i, pdf_path.name, key)
             if image_dir is not None:

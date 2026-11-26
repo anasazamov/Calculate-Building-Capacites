@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -72,7 +73,16 @@ def model1() -> Model:
                  {"chat_template_kwargs": {"enable_thinking": False}})
 
 
-MODELS = {"model1": model1}
+def vlm() -> Model:
+    """The vision model that reads text inside raster images of the project (scans, pasted pictures of tables,
+    raster drawings) together with where it stands: Qwen3-VL-32B-Instruct (scripts/vllm_vlm.sh). It answers
+    with boxes on a 0-1000 grid of the image it was shown (VLM_COORD_SCALE), which ingest maps to page points."""
+    return Model("vlm", os.environ.get("FEECALC_VLM_NAME", "qwen3-vl-32b"),
+                 os.environ.get("FEECALC_VLM_URL", "http://127.0.0.1:8002/v1"))
+
+
+VLM_COORD_SCALE = 1000
+MODELS = {"model1": model1, "vlm": vlm}
 
 
 def port_open(m: Model) -> bool:
@@ -138,10 +148,14 @@ def sha256_text(text: str) -> str:
 
 
 def request_body(m: Model, system: str, user: str, schema: dict, max_tokens: int,
-                 sampling: dict | None = None) -> dict:
+                 sampling: dict | None = None, images: list[bytes] | None = None) -> dict:
+    content: str | list[dict] = user
+    if images:
+        content = [{"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}}
+                   for png in images] + [{"type": "text", "text": user}]
     body: dict = {
         "model": m.name,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
         "max_tokens": max_tokens,
         "response_format": {"type": "json_schema",
                             "json_schema": {"name": "answer", "strict": True, "schema": schema}},
@@ -151,12 +165,24 @@ def request_body(m: Model, system: str, user: str, schema: dict, max_tokens: int
     return body
 
 
+def _stored_request(body: dict) -> dict:
+    """The request as stored with the raw response: an image is kept as its hash, not as megabytes of base64."""
+    out = json.loads(json.dumps(body))
+    for msg in out["messages"]:
+        if isinstance(msg["content"], list):
+            for part in msg["content"]:
+                if part.get("type") == "image_url":
+                    part["image_url"] = {"sha256": sha256_text(part["image_url"]["url"])}
+    return out
+
+
 def ask(m: Model, system: str, user: str, schema: dict, max_tokens: int, raw_dir: Path,
-        sampling: dict | None = None, cache: bool = True, nonce: str = "") -> Response:
-    """One request to a model. The raw response is stored as raw_dir/<key>.json."""
-    body = request_body(m, system, user, schema, max_tokens, sampling)
+        sampling: dict | None = None, cache: bool = True, nonce: str = "",
+        images: list[bytes] | None = None) -> Response:
+    """One request to a model (with images for the vision model). The raw response is stored as raw_dir/<key>.json."""
+    body = request_body(m, system, user, schema, max_tokens, sampling, images)
     key = sha256_text(json.dumps({"url": m.url, "body": body, "nonce": nonce}, sort_keys=True, ensure_ascii=False))
-    prompt_hash = sha256_text(system + "\n\n" + user)
+    prompt_hash = sha256_text(system + "\n\n" + user + "".join(hashlib.sha256(i).hexdigest() for i in images or []))
     raw_dir.mkdir(parents=True, exist_ok=True)
     path = raw_dir / f"{key}.json"
     cached = cache and path.exists()
@@ -169,7 +195,7 @@ def ask(m: Model, system: str, user: str, schema: dict, max_tokens: int, raw_dir
         if r.status_code != 200:
             raise ModelError(f"{m.key}: HTTP {r.status_code}: {r.text[:500]}")
         record = {"model": m.key, "url": m.url, "time": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                  "duration_s": round(duration, 3), "prompt_hash": prompt_hash, "request": body,
+                  "duration_s": round(duration, 3), "prompt_hash": prompt_hash, "request": _stored_request(body),
                   "response": r.json()}
         path.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
     data = check_response(m, record["response"], schema, key)

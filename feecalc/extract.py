@@ -274,11 +274,11 @@ def project_chunks(pdf_path: Path, pages: list[Page], kinds: dict[int, classify.
         rooms = st.kind in ("explication", "finishing_schedule") or st.has_rooms
         if not tep and not rooms:
             continue
-        if p.ocr_unclear:
-            prep.warnings.append(f"{p.file}, {p.number}-sahifa: {p.ocr_unclear} ta rasmda matn bor, lekin OCR uni ishonchli "
-                                 "o'qiy olmadi — rasm sifati past; ko'rsatkichlar shu rasmda bo'lsa, qo'lda tekshiring")
-        elif p.ocr_words:
-            prep.warnings.append(f"{p.file}, {p.number}-sahifa: rasm ichidagi {p.ocr_words} ta so'z OCR bilan o'qildi")
+        if p.image_unclear:
+            prep.warnings.append(f"{p.file}, {p.number}-sahifa: {p.image_unclear} ta rasmda yozuv bor, lekin rasm modeli "
+                                 "(VLM) uni ishonchli o'qiy olmadi — rasm sifati past; ko'rsatkichlar shu rasmda bo'lsa, qo'lda tekshiring")
+        elif p.image_words:
+            prep.warnings.append(f"{p.file}, {p.number}-sahifa: rasm ichidagi {p.image_words} ta so'z rasm modeli (VLM) bilan o'qildi")
         lines = structured_text(pdf_path, p).splitlines()
         for kind, wanted in (("tep", tep), ("rooms", rooms)):
             if not wanted:
@@ -404,31 +404,31 @@ def _record(c: Chunk, r: llm.Response) -> dict:
                                 r.completion_tokens, r.duration_s, r.cached))
 
 
-OCR_FLAG = "rasm ichidan OCR bilan o'qilgan — raqamni manba rasmida ko'zdan kechiring"
+IMAGE_FLAG = "rasm ichidan rasm modeli (VLM) bilan o'qilgan — raqamni manba rasmida ko'zdan kechiring"
 
 
-def mark_ocr(result: object, pages_by_key: dict[tuple[str, int], Page]) -> None:
-    """Flag every accepted value whose snippet is found only in text that OCR read from an image: such a digit
-    may be misread, so staff see where it came from. Walks the whole reading result."""
+def mark_image_values(result: object, pages_by_key: dict[tuple[str, int], Page]) -> None:
+    """Flag every accepted value whose snippet is found only in text the vision model read from an image: there
+    is no text layer to check that digit against, so staff see where it came from. Walks the whole result."""
     if isinstance(result, list):
         for item in result:
-            mark_ocr(item, pages_by_key)
+            mark_image_values(item, pages_by_key)
         return
     if not isinstance(result, dict):
         return
     page = pages_by_key.get((result.get("file"), result.get("page"))) if "source_text" in result else None
-    if page is not None and page.ocr_words and result.get("status") == verify.ACCEPTED and result.get("source_text"):
+    if page is not None and page.image_words and result.get("status") == verify.ACCEPTED and result.get("source_text"):
         plain = verify.normalize_joined(page_line_text(Page(page.file, page.number, page.width, page.height, "",
-                                                             [w for w in page.words if not w.ocr])))
-        if verify.normalize_joined(str(result["source_text"])) not in plain and OCR_FLAG not in result.get("flags", []):
-            result.setdefault("flags", []).append(OCR_FLAG)
+                                                             [w for w in page.words if not w.from_image])))
+        if verify.normalize_joined(str(result["source_text"])) not in plain and IMAGE_FLAG not in result.get("flags", []):
+            result.setdefault("flags", []).append(IMAGE_FLAG)
     for value in result.values():
         if isinstance(value, (dict, list)):
-            mark_ocr(value, pages_by_key)
+            mark_image_values(value, pages_by_key)
 
 
-def _with_ocr_marks(result: dict, pages: list[Page]) -> dict:
-    mark_ocr(result, {(p.file, p.number): p for p in pages})
+def _with_image_marks(result: dict, pages: list[Page]) -> dict:
+    mark_image_values(result, {(p.file, p.number): p for p in pages})
     return result
 
 
@@ -533,7 +533,7 @@ def read_conclusion(m: llm.Model, pages: list[Page], raw_dir: Path,
     if len(prep.chunks) > 1:
         buildings = _merge_buildings(buildings, BUILDING_FIELDS, m.key)
     flag_floor_contradictions(buildings, floor_statements(pages))
-    return _with_ocr_marks({
+    return _with_image_marks({
         "doc": "conclusion", "model": m.key,
         "scalars": {k: merge(k, v, m.key) for k, v in scalars.items()},
         "totals": {k: merge(k, v, m.key) for k, v in totals.items()},
@@ -594,7 +594,7 @@ def read_project(m: llm.Model, files: list[tuple[Path, list[Page], dict[int, cla
         dropped = [str(b["name"]["value"]) for b in merged if b not in kept]
         warnings.append(f"Loyihada {len(dropped)} ta bino nomi maydon/hajm ko'rsatkichisiz uchradi va binolar "
                         f"ro'yxatiga kiritilmadi: " + "; ".join(dropped[:6]))
-    return _with_ocr_marks({
+    return _with_image_marks({
         "doc": "project", "model": m.key, "dropped_buildings": dropped_buildings,
         "scalars": {**{k: merge(k, v, m.key) for k, v in scalars.items()},
                     "address": merge("address", addresses, m.key)},

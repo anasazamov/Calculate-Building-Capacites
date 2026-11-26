@@ -44,7 +44,7 @@ def test_sha256(sample_dir: Path):
     assert len(ingest.sha256_file(sample_dir / "demo_project.pdf")) == 64
 
 
-# ---------- OCR of raster images ----------
+# ---------- raster images, read by the vision model ----------
 def _raster_pdf(path: Path, lines: list[str]) -> Path:
     """A page whose text exists only as a picture (as in a scan), plus one line of real text."""
     import pymupdf
@@ -69,27 +69,74 @@ def _raster_pdf(path: Path, lines: list[str]) -> Path:
     return path
 
 
-def test_text_inside_an_image_is_read_by_ocr_and_cached(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(ingest, "OCR_CACHE", tmp_path / "ocr")
-    pdf = _raster_pdf(tmp_path / "scan.pdf", ["Qurilish hajmi 36036 m3", "Umumiy maydon 9410,0 m2"])
+def _fake_vlm(lines: list[str], calls: list[int]):
+    """Stands in for the vision model: a wide image (the scanned table) holds `lines`, one item per line, on the
+    0-1000 grid; the squarer noise picture is a photo with no writing."""
+    import pymupdf
+
+    def read(png: bytes) -> dict:
+        calls.append(1)
+        pix = pymupdf.Pixmap(png)
+        if pix.width < pix.height * 1.8:
+            return {"kind": "photo", "legible": True, "items": []}
+        # in the source picture line i sits at y = 40 + 30 i (baseline) of 160 pt
+        return {"kind": "table", "legible": True,
+                "items": [{"text": t, "bbox_2d": [40, int((26 + 30 * i) / 160 * 1000), 600, int((44 + 30 * i) / 160 * 1000)]}
+                          for i, t in enumerate(lines)]}
+    return read
+
+
+def test_text_inside_an_image_is_read_by_the_vision_model_and_cached(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(ingest, "VLM_CACHE", tmp_path / "vlm")
+    lines = ["Qurilish hajmi 36036 m3", "Umumiy maydon 9410,0 m2"]
+    calls: list[int] = []
+    monkeypatch.setattr(ingest, "read_image", _fake_vlm(lines, calls))
+    pdf = _raster_pdf(tmp_path / "scan.pdf", lines)
     page = ingest.ingest(pdf)[0]
-    ocr = " ".join(w.text for w in page.words if w.ocr)
-    assert page.ocr_words > 0 and "36036" in ocr and "9410,0" in ocr and "hajmi" in ocr
-    assert not any(w.ocr and w.x0 > 495 for w in page.words)              # the noise picture gave no words
-    assert "36036" in page.text                                            # the models see it like the text layer
-    assert len(list((tmp_path / "ocr").glob("*.json"))) == 1
-    monkeypatch.setattr(ingest, "_tesseract", lambda png: (_ for _ in ()).throw(AssertionError("cache not used")))
-    assert ingest.ingest(pdf)[0].ocr_words == page.ocr_words
+    read = " ".join(w.text for w in page.words if w.from_image)
+    assert page.image_words > 0 and "36036" in read and "9410,0" in read and "hajmi" in read
+    assert len(calls) == 2                                                  # both pictures were shown to the model
+    assert not any(w.from_image and w.x0 > 495 for w in page.words)        # the photo gave no words
+    assert all(40 <= w.x0 and w.x1 <= 460 and 80 <= w.y0 and w.y1 <= 240 for w in page.words if w.from_image)
+    assert "36036" in page.text                                            # the reader sees it like the text layer
+    assert len(list((tmp_path / "vlm").glob("*.json"))) == 1
+    monkeypatch.setattr(ingest, "read_image", lambda png: (_ for _ in ()).throw(AssertionError("cache not used")))
+    assert ingest.ingest(pdf)[0].image_words == page.image_words
     rects = ingest.snippet_rects(pdf, 1, "Qurilish hajmi 36036")
     assert rects and all(80 <= r[1] <= 240 for r in rects)                 # the highlight lands inside the picture
 
 
-def test_a_value_found_only_in_ocr_text_is_flagged(tmp_path: Path, monkeypatch):
+def test_illegible_writing_is_counted_and_an_unreachable_model_stops_the_job(tmp_path: Path, monkeypatch):
+    import pytest
+    from feecalc import llm
+    monkeypatch.setattr(ingest, "VLM_CACHE", tmp_path / "vlm")
+    monkeypatch.setattr(ingest, "read_image", lambda png: {"kind": "table", "legible": False, "items": []})
+    pdf = _raster_pdf(tmp_path / "scan.pdf", ["Qurilish hajmi 36036 m3"])
+    assert ingest.ingest(pdf)[0].image_unclear == 2
+    monkeypatch.undo()                                                      # the real read_image, a fresh cache
+    monkeypatch.setattr(ingest, "VLM_CACHE", tmp_path / "vlm2")
+    monkeypatch.setattr(llm, "port_open", lambda m: False)
+    with pytest.raises(llm.ModelError):
+        ingest.ingest(pdf)
+
+
+def test_a_value_found_only_in_image_text_is_flagged(tmp_path: Path, monkeypatch):
     from feecalc import extract
-    monkeypatch.setattr(ingest, "OCR_CACHE", tmp_path / "ocr")
+    monkeypatch.setattr(ingest, "VLM_CACHE", tmp_path / "vlm")
+    monkeypatch.setattr(ingest, "read_image", _fake_vlm(["Qurilish hajmi 36036 m3"], []))
     pdf = _raster_pdf(tmp_path / "scan.pdf", ["Qurilish hajmi 36036 m3"])
     page = ingest.ingest(pdf)[0]
     from_image = {"file": "scan.pdf", "page": 1, "status": "accepted", "source_text": "Qurilish hajmi 36036", "flags": []}
     from_text = {"file": "scan.pdf", "page": 1, "status": "accepted", "source_text": "Texnik-iqtisodiy ko'rsatkichlar", "flags": []}
-    extract.mark_ocr({"a": from_image, "b": [from_text]}, {("scan.pdf", 1): page})
-    assert from_image["flags"] == [extract.OCR_FLAG] and from_text["flags"] == []
+    extract.mark_image_values({"a": from_image, "b": [from_text]}, {("scan.pdf", 1): page})
+    assert from_image["flags"] == [extract.IMAGE_FLAG] and from_text["flags"] == []
+
+
+def test_image_request_carries_the_picture_and_stores_only_its_hash(tmp_path: Path, monkeypatch):
+    import json
+    from feecalc import llm
+    body = llm.request_body(llm.vlm(), "s", "u", ingest.VLM_SCHEMA, 100, images=[b"\x89PNG fake"])
+    parts = body["messages"][1]["content"]
+    assert parts[0]["type"] == "image_url" and parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+    stored = llm._stored_request(body)
+    assert "base64" not in json.dumps(stored) and stored["messages"][1]["content"][0]["image_url"]["sha256"]

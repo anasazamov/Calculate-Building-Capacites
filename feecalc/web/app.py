@@ -610,7 +610,7 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     def index(request: Request) -> Response:
         return templates.TemplateResponse(request, "index.html", {
             "jobs": store.jobs(), "staff": staff(request), "decided": store.decision_counts(),
-            "model1_up": llm.port_open(llm.model1())})
+            "model1_up": llm.port_open(llm.model1()), "vlm_up": llm.port_open(llm.vlm())})
 
     @app.post("/whoami")
     def whoami(name: str = Form(...), next: str = Form("/")) -> Response:

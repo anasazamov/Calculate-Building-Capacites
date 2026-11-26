@@ -50,7 +50,7 @@ The user interface is in Uzbek (Latin script); code, comments and commit message
 
 - Linux with an NVIDIA GPU. Tested on one RTX PRO 6000 Blackwell (96 GB), driver 580.95,
   Python 3.12, [uv](https://docs.astral.sh/uv/).
-- About 100 GB of free disk for three models (30–33 GB each).
+- About 80 GB of free disk for the two models (33 and 36 GB).
 - Internet access is needed only to install packages and download model weights.
 
 ## Setup from scratch
@@ -58,9 +58,6 @@ The user interface is in Uzbek (Latin script); code, comments and commit message
 ```bash
 git clone https://github.com/anasazamov/Calculate-Building-Capacites.git
 cd Calculate-Building-Capacites
-
-# 0. OCR engine for text inside raster images (scans, pictures of tables)
-sudo apt-get install -y tesseract-ocr tesseract-ocr-rus tesseract-ocr-uzb tesseract-ocr-uzb-cyrl
 
 # 1. application environment
 uv venv .venv --python 3.12
@@ -76,8 +73,8 @@ uv pip install -p /workspace/venvs/vllm/bin/python vllm==0.34.0 --torch-backend=
 export HF_HOME=/workspace/.hf_home HF_HUB_DISABLE_TELEMETRY=1
 uv venv /workspace/venvs/hf --python 3.12
 uv pip install -p /workspace/venvs/hf/bin/python "huggingface_hub[hf_xet]"
-/workspace/venvs/hf/bin/hf download Qwen/Qwen3.8-27B-FP8                # model 1
-/workspace/venvs/hf/bin/hf download RedHatAI/gemma-4-31B-it-FP8-block   # model 2 (optional)
+/workspace/venvs/hf/bin/hf download RedHatAI/gemma-4-31B-it-FP8-block   # reading model (model1)
+/workspace/venvs/hf/bin/hf download Qwen/Qwen3-VL-32B-Instruct-FP8      # vision model: writing inside images
 ```
 
 If a download stalls on its last file, stop it and run the same command again: it resumes.
@@ -88,8 +85,9 @@ If a download stalls on its last file, stop it and run the same command again: i
 # model servers, each supervised by a watchdog (canary every 60 s, restart on failure).
 # Each command returns when its server is healthy (1.5-4 minutes). Start them one after another,
 # model 1 first: two servers loading at the same moment on a shared card ignore their memory shares.
-scripts/start_watchdog.sh model1        # Qwen3.8-27B-FP8      on 127.0.0.1:8001
-scripts/start_watchdog.sh model2        # Gemma-4-31B-it (FP8) on 127.0.0.1:8002, optional
+scripts/start_watchdog.sh model1        # Gemma-4-31B-it (FP8), reads the documents, on 127.0.0.1:8001
+scripts/start_watchdog.sh vlm           # Qwen3-VL-32B (FP8), reads writing inside images, on 127.0.0.1:8002
+# A document with raster images (scans, pictures of tables) stops with an error while the vision model is down.
 tail logs/incidents.jsonl               # start, restart and failure events
 
 # web interface on 127.0.0.1:8000 (foreground; add `nohup ... &` to keep it running)
