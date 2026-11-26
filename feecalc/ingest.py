@@ -36,7 +36,7 @@ VLM_MAX_SIDE = 2048           # longest side, pixels, of an image sent to the vi
 VLM_MIN_DPI = 150             # a small image is enlarged to at least this resolution
 VLM_MAX_TOKENS = 6000         # the longest table answer measured was ~1.9k tokens; a denser image is read in tiles
 VLM_WORKERS = 8               # images of one document read at the same time
-VLM_VERSION = 1               # part of the cache key: raise it when the question or the settings change
+VLM_VERSION = 2              # part of the cache key: raise it when the question or the settings change
 VLM_CACHE = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm"
 VLM_RAW = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm_raw"
 TEXT_KINDS = ("table", "text", "stamp", "drawing")  # images whose writing is read into the page
@@ -287,9 +287,24 @@ def _page_regions_read(answers: list[dict], regions: list[tuple[pymupdf.Rect, in
             bx0, by0, bx1, by1 = item["bbox_2d"]
             if not item["text"].strip() or bx1 <= bx0 or by1 <= by0:
                 continue
-            words += [[w.x0, w.y0, w.x1, w.y1, w.text] for w in _split_item(
-                item["text"], box.x0 + bx0 * sx, box.y0 + by0 * sy, box.x0 + bx1 * sx, box.y0 + by1 * sy)]
-    return {"words": words, "unclear": unclear, "kinds": kinds}
+            words.append([box.x0 + bx0 * sx, box.y0 + by0 * sy, box.x0 + bx1 * sx, box.y0 + by1 * sy, item["text"]])
+    return {"items": words, "unclear": unclear, "kinds": kinds}
+
+
+def _tokens_of(text: str) -> list[str]:
+    return [t for t in re.split(r"[\s|]+", text.lower()) if t]
+
+
+def _already_in_text_layer(item: tuple[float, float, float, float, str], text_words: list[Word]) -> bool:
+    """Is this read item writing the text layer already has at that place (a picture lying under a real table,
+    a scan with a text layer on top)? The vision model's box is approximate, so the text-layer words around it
+    are compared by content: most of the item's words found there means it is the same writing."""
+    x0, y0, x1, y1, text = item
+    pad = max(y1 - y0, 4.0)
+    near = {t for w in text_words if w.x1 >= x0 - pad and w.x0 <= x1 + pad and w.y1 >= y0 - pad and w.y0 <= y1 + pad
+            for t in _tokens_of(w.text)}
+    own = _tokens_of(text)
+    return bool(own) and sum(t in near for t in own) / len(own) >= 0.6
 
 
 Pending = list[tuple[int, list[tuple[pymupdf.Rect, int]], list[bytes]]]
@@ -348,10 +363,9 @@ def image_words(doc: pymupdf.Document, index: int, pdf_key: str, text_words: lis
         return [], 0  # no image on the page is large enough to hold readable writing
     stored = json.loads(path.read_text(encoding="utf-8"))
     out = []
-    for x0, y0, x1, y1, text in stored["words"]:
-        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-        if not any(t.x0 <= cx <= t.x1 and t.y0 <= cy <= t.y1 for t in text_words):
-            out.append(Word(x0, y0, x1, y1, text, True))
+    for item in stored["items"]:
+        if not _already_in_text_layer(tuple(item), text_words):
+            out += _split_item(item[4], *item[:4])
     return out, stored["unclear"]
 
 

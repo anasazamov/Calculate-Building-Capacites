@@ -141,6 +141,15 @@ def test_a_bare_number_source_is_checked_on_its_one_labelled_line():
     assert verify.line_of_number("9410.0", "9410.0", twice) is None                # two places: no guessing
 
 
+def test_writing_the_text_layer_already_has_is_not_added_again_from_the_picture():
+    text = [ingest.Word(100, 100, 140, 110, "Issiqlik"), ingest.Word(142, 100, 180, 110, "punkti"),
+            ingest.Word(182, 100, 210, 110, "binosi")]
+    # the vision model's box is a little off, as it usually is
+    assert ingest._already_in_text_layer((96, 103, 205, 114, "Issiqlik punkti binosi"), text)
+    assert not ingest._already_in_text_layer((96, 103, 205, 114, "Transformator uskunasi"), text)
+    assert not ingest._already_in_text_layer((400, 400, 500, 410, "Issiqlik punkti binosi"), text)
+
+
 def test_a_row_naming_a_separate_building_of_the_site_is_not_counted_again():
     from feecalc import volumes
     listed = ["Issiqlik punkti binosi", "Yong`inga qarshi suv havzasi 100 m3", "Loihalanayotgan Transformator uskunasi",
