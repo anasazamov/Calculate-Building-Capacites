@@ -141,6 +141,17 @@ def test_a_bare_number_source_is_checked_on_its_one_labelled_line():
     assert verify.line_of_number("9410.0", "9410.0", twice) is None                # two places: no guessing
 
 
+def test_a_row_naming_a_separate_building_of_the_site_is_not_counted_again():
+    from feecalc import volumes
+    listed = ["Issiqlik punkti binosi", "Yong`inga qarshi suv havzasi 100 m3", "Loihalanayotgan Transformator uskunasi",
+              "2-qavatli yakka tartibdagi turar-joy binolari"]
+    assert volumes.separate_building("Issiqlik punkti binosi (loyihaviy)", listed) == "Issiqlik punkti binosi"
+    assert volumes.separate_building("Loihalanayotgan Transformator uskunasi", listed)
+    assert volumes.separate_building("Yong'inga qarshi suv havzasi", listed)
+    assert volumes.separate_building("Elektr shchitovaya", listed) is None
+    assert volumes.separate_building("Texnik xona", listed) is None
+
+
 def test_a_degenerate_answer_is_read_again_in_tiles_on_the_whole_image_grid(monkeypatch):
     import pymupdf
     from feecalc import llm

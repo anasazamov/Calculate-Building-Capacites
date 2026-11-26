@@ -532,8 +532,12 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
     judged_rooms = {classify.name_key(name): (answer["answer"], answer["reason"])
                     for name, answers in judgments.get("rooms", {}).items()
                     for answer in [judge.agreed(answers)] if answer and answer["answer"] in ("Ha", "Ht", "Hu")}
+    # a site with several buildings: a row that names one of them is that building, not a room of another
+    listed = ([str(b["name"].get("value") or "") for b in p1["buildings"] + c1["buildings"]]
+              + [str(d["name"]) for d in p1.get("dropped_buildings", [])]
+              if max(len(p1["buildings"]), len(c1["buildings"])) > 1 else [])
     components = volumes.build_components(p1, heights, result.get("category_suggestions", {}), overrides, room_names,
-                                          judged_rooms)
+                                          judged_rooms, [n for n in listed if n.strip()])
     all_floors = [f for f in (_num(b["floors"]) for b in c1["buildings"] + p1["buildings"]) if f is not None]
     if len(p1["buildings"]) == 1:
         floors = _num(p1["buildings"][0]["floors"]) or (_num(album_building["floors"]) if album_building else None)

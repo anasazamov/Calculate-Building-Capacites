@@ -161,13 +161,36 @@ def component_id(origin: str, file: str | None, page: int | None, name: str, val
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
+_PART_NOISE = {"binosi", "bino", "binolari", "binolar", "loyihaviy", "loihalanayotgan",
+                                   "loyihalanayotgan", "mavjud", "va", "m2", "m3", "uchun"}
+
+
+def _text_tokens(text: str) -> set[str]:
+    return {x for x in re.split(r"[^a-z0-9]+", verify.transliterate(text.lower()))
+            if len(x) > 1 and not x.isdigit() and x not in _PART_NOISE}
+
+
+def separate_building(name: str, listed: list[str]) -> str | None:
+    """The listed building (of a site with several) that this room / breakdown row names, or None. Such a row is
+    that building itself, already counted in its Hb row (and, when technical, in Ht by the judgment stage), not a
+    part of another building: counting it again as area x some building's height would count it twice."""
+    own = _text_tokens(name)
+    for other in listed:
+        theirs = _text_tokens(other)
+        if own and theirs and len(own & theirs) / min(len(own), len(theirs)) >= 0.75:
+            return other
+    return None
+
+
 def build_components(project: dict, heights: list[Height], suggestions: dict[str, str],
                      overrides: dict[str, dict], names: dict[str, str] | None = None,
-                     judged: dict[str, tuple[str, str]] | None = None) -> list[dict]:
+                     judged: dict[str, tuple[str, str]] | None = None,
+                     listed_buildings: list[str] | None = None) -> list[dict]:
     """Rooms and area-breakdown rows as volume components, with category, height and volume.
 
     `suggestions`: model-suggested categories for names missing from the dictionary.
     `overrides`: staff changes per component id: category / height / volume / included (+ reason).
+    `listed_buildings`: names of the site's separate buildings when there are several (see separate_building).
     """
     rows: list[tuple[str, dict, dict | None, str, str | None, str | None]] = []
     for b in project.get("area_breakdown", []):
@@ -227,6 +250,7 @@ def build_components(project: dict, heights: list[Height], suggestions: dict[str
             "height": None if height is None else str(height), "height_note": height_note,
             "volume": None if volume is None else str(volume), "computed": computed, "formula": formula,
             "override": ov or None, "included": True, "exclusion_note": "",
+            "separate_building": separate_building(name, listed_buildings or []),
         })
     _apply_default_inclusion(components, overrides)
     return components
@@ -240,6 +264,10 @@ def _apply_default_inclusion(components: list[dict], overrides: dict[str, dict])
         if c["category"] == "other":
             c["included"] = False
             continue
+        if c.get("separate_building"):
+            c["included"] = False
+            c["exclusion_note"] = (f"loyihaning binolar ro'yxatidagi alohida inshoot («{c['separate_building']}») — "
+                                   "Hb qatorida hisobga olingan, xona sifatida takror sanalmaydi")
         if c["origin"] == "room" and c["category"] in in_breakdown:
             c["included"] = False
             c["exclusion_note"] = ("ko'rsatkichlar jadvalida shu toifadagi qator bor — takror sanalmasligi "
