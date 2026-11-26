@@ -465,7 +465,9 @@ def test_a_room_name_decided_once_applies_to_every_job(client: TestClient, sampl
         view = pipeline.assess(result, room_names=names)
         row = [c for c in view["components"] if c["name"] == name][0]
         assert (row["category"], row["category_method"], row["needs_confirmation"]) == ("Ht", "reference", False)
-        assert pipeline.assess(result)["components"][view["components"].index(row)]["category"] == "other"
+        plain = pipeline.assess(result)["components"][view["components"].index(row)]
+        # without the reference entry the model's suggestion applies, and it waits for confirmation
+        assert plain["category"] == result["category_suggestions"].get(name, "other") and plain["category_method"] != "reference"
 
 
 def test_judgment_stage_can_be_run_again_without_reading(client: TestClient, sample_dir: Path):

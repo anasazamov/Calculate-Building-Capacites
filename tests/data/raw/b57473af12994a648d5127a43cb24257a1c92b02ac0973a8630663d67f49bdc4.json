@@ -1,11 +1,11 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T13:50:33",
- "duration_s": 1.551,
- "prompt_hash": "a0a0627dc9e61ba3e91dde55e2aa2ac656d5c94bf432977a8403d6e5fbb719eb",
+ "time": "2026-11-26T10:16:53",
+ "duration_s": 1.442,
+ "prompt_hash": "4967335adfc8c22e401c4aa6c9e26ef225fafec27173ddc07ad1fd8bbf736ac4",
  "request": {
-  "model": "qwen3.8-27b",
+  "model": "gemma-4-31b-it",
   "messages": [
    {
     "role": "system",
@@ -13,7 +13,7 @@
    },
    {
     "role": "user",
-    "content": "Turar joy binosi — Tip-1"
+    "content": "Turar joy binosi — Tip-2"
    }
   ],
   "max_tokens": 600,
@@ -56,16 +56,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-8fab4f2e54264716",
+  "id": "chatcmpl-bdb44689eb734dba",
   "object": "chat.completion",
-  "created": 1795614632,
-  "model": "qwen3.8-27b",
+  "created": 1795688212,
+  "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\n\"reason\": \"Turar joy binosi odamlar yashashi uchun mo'ljallangan asosiy bino hisoblanadi va texnik inshoot yoki sig'imli ob'ekt emas.\",\n\"answer\": \"bino\"\n}",
+     "content": "{\"reason\": \"Berilgan qatorda 'Turar joy binosi' deb ko'rsatilgan, bu odamlar yashashi uchun mo'ljallangan oddiy bino hisoblanadi.\", \"answer\": \"bino\"}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -73,18 +73,18 @@
     },
     "logprobs": null,
     "finish_reason": "stop",
-    "stop_reason": null,
+    "stop_reason": 106,
     "token_ids": null,
     "routed_experts": null,
     "weight_versions": null
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
   "usage": {
-   "prompt_tokens": 416,
-   "total_tokens": 475,
-   "completion_tokens": 59,
+   "prompt_tokens": 403,
+   "total_tokens": 457,
+   "completion_tokens": 54,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

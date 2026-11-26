@@ -1,11 +1,11 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T13:48:57",
- "duration_s": 14.699,
+ "time": "2026-11-26T10:15:48",
+ "duration_s": 14.621,
  "prompt_hash": "8a17ac6155ebce162e52c45b0d3533b823a32dc91d1868147ae47db6e1fe8644",
  "request": {
-  "model": "qwen3.8-27b",
+  "model": "gemma-4-31b-it",
   "messages": [
    {
     "role": "system",
@@ -98,16 +98,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-8aa64c6b7b877196",
+  "id": "chatcmpl-ae5e81875540b1d8",
   "object": "chat.completion",
-  "created": 1795614522,
-  "model": "qwen3.8-27b",
+  "created": 1795688133,
+  "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\n  \"rooms\": [\n    {\n      \"name\": \"Насосная\",\n      \"level\": \"Подвал\",\n      \"area\": \"24.5\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Насосная | Подвал | 24.5\"\n    },\n    {\n      \"name\": \"Электрощитовая\",\n      \"level\": \"Подвал\",\n      \"area\": \"12.3\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Электрощитовая | Подвал | 12.3\"\n    },\n    {\n      \"name\": \"Венткамера\",\n      \"level\": \"Подвал\",\n      \"area\": \"15.8\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Венткамера | Подвал | 15.8\"\n    },\n    {\n      \"name\": \"Лестничная клетка\",\n      \"level\": \"1 этаж\",\n      \"area\": \"18.6\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Лестничная клетка | 1 этаж | 18.6\"\n    },\n    {\n      \"name\": \"Лифтовой холл\",\n      \"level\": \"1 этаж\",\n      \"area\": \"9.4\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Лифтовой холл | 1 этаж | 9.4\"\n    },\n    {\n      \"name\": \"Колясочная\",\n      \"level\": \"1 этаж\",\n      \"area\": \"6.2\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Колясочная | 1 этаж | 6.2\"\n    },\n    {\n      \"name\": \"Помещение консьержа\",\n      \"level\": \"1 этаж\",\n      \"area\": \"7.5\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Помещение консьержа | 1 этаж | 7.5\"\n    },\n    {\n      \"name\": \"Диспетчерская\",\n      \"level\": \"1 этаж\",\n      \"area\": \"8.1\",\n      \"volume\": null,\n      \"unit\": \"м2\",\n      \"source_text\": \"Диспетчерская | 1 этаж | 8.1\"\n    }\n  ]\n}",
+     "content": "{\"rooms\": [{\"name\": \"Насосная\", \"level\": \"Подвал\", \"area\": \"24.5\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Насосная | Подвал | 24.5\"}, {\"name\": \"Электрощитовая\", \"level\": \"Подвал\", \"area\": \"12.3\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Электрощитовая | Подвал | 12.3\"}, {\"name\": \"Венткамера\", \"level\": \"Подвал\", \"area\": \"15.8\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Венткамера | Подвал | 15.8\"}, {\"name\": \"Лестничная клетка\", \"level\": \"1 этаж\", \"area\": \"18.6\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Лестничная клетка | 1 этаж | 18.6\"}, {\"name\": \"Лифтовой холл\", \"level\": \"1 этаж\", \"area\": \"9.4\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Лифтовой холл | 1 этаж | 9.4\"}, {\"name\": \"Колясочная\", \"level\": \"1 этаж\", \"area\": \"6.2\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Колясочная | 1 этаж | 6.2\"}, {\"name\": \"Помещение консьержа\", \"level\": \"1 этаж\", \"area\": \"7.5\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Помещение консьержа | 1 этаж | 7.5\"}, {\"name\": \"Диспетчерская\", \"level\": \"1 этаж\", \"area\": \"8.1\", \"volume\": null, \"unit\": \"м2\", \"source_text\": \"Диспетчерская | 1 этаж | 8.1\"}]}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -115,18 +115,18 @@
     },
     "logprobs": null,
     "finish_reason": "stop",
-    "stop_reason": null,
+    "stop_reason": 106,
     "token_ids": null,
     "routed_experts": null,
     "weight_versions": null
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
   "usage": {
-   "prompt_tokens": 911,
-   "total_tokens": 1535,
-   "completion_tokens": 624,
+   "prompt_tokens": 929,
+   "total_tokens": 1405,
+   "completion_tokens": 476,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

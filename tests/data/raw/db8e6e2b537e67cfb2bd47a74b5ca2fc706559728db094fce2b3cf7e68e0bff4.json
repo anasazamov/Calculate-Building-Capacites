@@ -1,11 +1,11 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T13:49:38",
- "duration_s": 1.485,
+ "time": "2026-11-26T10:16:14",
+ "duration_s": 1.034,
  "prompt_hash": "26f1006e89a6b6a9f042bd71669764ff10df0c440297a53b772df4e0925fc99b",
  "request": {
-  "model": "qwen3.8-27b",
+  "model": "gemma-4-31b-it",
   "messages": [
    {
     "role": "system",
@@ -57,16 +57,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-b8e0efee07a3c21e",
+  "id": "chatcmpl-a702b73c7fa0e7af",
   "object": "chat.completion",
-  "created": 1795614577,
-  "model": "qwen3.8-27b",
+  "created": 1795688173,
+  "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"reason\": \"Диспетчерская — это служебное помещение для персонала, не относящееся к парковке, техническим системам (насосы, электрика) или общим зонам (лестницы, коридоры).\", \"answer\": \"boshqa\"}",
+     "content": "{\"reason\": \"Диспетчерская — это помещение для управления техническими системами здания, что относит его к категории технических помещений.\", \"answer\": \"Ht\"}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -74,18 +74,18 @@
     },
     "logprobs": null,
     "finish_reason": "stop",
-    "stop_reason": null,
+    "stop_reason": 106,
     "token_ids": null,
     "routed_experts": null,
     "weight_versions": null
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
   "usage": {
-   "prompt_tokens": 412,
-   "total_tokens": 476,
-   "completion_tokens": 64,
+   "prompt_tokens": 393,
+   "total_tokens": 430,
+   "completion_tokens": 37,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

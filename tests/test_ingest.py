@@ -132,6 +132,15 @@ def test_a_value_found_only_in_image_text_is_flagged(tmp_path: Path, monkeypatch
     assert from_image["flags"] == [extract.IMAGE_FLAG] and from_text["flags"] == []
 
 
+def test_a_bare_number_source_is_checked_on_its_one_labelled_line():
+    from feecalc import verify
+    texts = ["Turar joy\nTip-2\n9410.0\n36036.0", "Turar joy binosi | Tip-2 | 16 | 9410.0 | 36036.0\nJami 9980.4"]
+    assert verify.line_of_number("9410.0", "9410.0", texts) == "Turar joy binosi | Tip-2 | 16 | 9410.0 | 36036.0"
+    assert verify.line_of_number("9410.0", "Tip-2 9410.0", texts) is None          # already has a label
+    twice = texts + ["Umumiy maydon 9410.0"]
+    assert verify.line_of_number("9410.0", "9410.0", twice) is None                # two places: no guessing
+
+
 def test_a_degenerate_answer_is_read_again_in_tiles_on_the_whole_image_grid(monkeypatch):
     import pymupdf
     from feecalc import llm

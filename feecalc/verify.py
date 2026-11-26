@@ -82,6 +82,22 @@ def has_label(source: str) -> bool:
     return any(w.lower() not in _UNIT_WORDS for w in _WORD.findall(source))
 
 
+def line_of_number(value: str | None, source: str | None, page_texts: list[str]) -> str | None:
+    """When the model gave a bare number as its source (some models copy only the table cell), the line of the
+    page that holds that number, with its label: but only when exactly one line of the page holds that number,
+    so the line is the number's own context and not a guess between several places. Otherwise None."""
+    number = parse_number(str(value)) if value is not None else None
+    if number is None or source is None or has_label(normalize(source)) or parse_number(source) != number:
+        return None
+    found: dict[str, str] = {}
+    for text in page_texts:  # the raw text layer and the same page grouped into lines / table rows
+        for line in text.splitlines():
+            # a line that is the bare cell itself gives no context and is the same place as its row
+            if has_label(normalize(line)) and any(v == abs(number) for v, _minus in numbers_in_text(line)):
+                found.setdefault(normalize(line), line.strip())
+    return next(iter(found.values())) if len(found) == 1 else None
+
+
 def verify_source(value: str | None, source: str | None, page_texts: list[str],
                   numeric: bool) -> tuple[str, str, Decimal | None]:
     """Verify a value against its source -> (status, reason, number).

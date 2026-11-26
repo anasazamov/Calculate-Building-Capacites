@@ -1,11 +1,11 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T13:50:32",
- "duration_s": 51.271,
+ "time": "2026-11-26T10:16:52",
+ "duration_s": 35.665,
  "prompt_hash": "5869f4c7b32a968b63c97f8df015f31c7dcfcf31077a1d7ea3c393ba97485550",
  "request": {
-  "model": "qwen3.8-27b",
+  "model": "gemma-4-31b-it",
   "messages": [
    {
     "role": "system",
@@ -972,16 +972,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-9e05211440123467",
+  "id": "chatcmpl-aa0deecf6c4d7be6",
   "object": "chat.completion",
-  "created": 1795614581,
-  "model": "qwen3.8-27b",
+  "created": 1795688176,
+  "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\n  \"conclusion_number\": {\n    \"value\": \"284459\",\n    \"unit\": null,\n    \"source_text\": \"DAVLAT EKSPERTIZASI XULOSASI № 284459\",\n    \"page\": 1\n  },\n  \"conclusion_date\": {\n    \"value\": \"12.10.2026\",\n    \"unit\": null,\n    \"source_text\": \"Sana: 12.10.2026\",\n    \"page\": 1\n  },\n  \"application_number\": {\n    \"value\": null,\n    \"unit\": null,\n    \"source_text\": null,\n    \"page\": null\n  },\n  \"address\": {\n    \"value\": \"Samarqand shahri, Maysazor ko'chasi\",\n    \"unit\": null,\n    \"source_text\": \"Obyekt manzili: Samarqand shahri, Maysazor ko'chasi\",\n    \"page\": 1\n  },\n  \"customer\": {\n    \"value\": \"«Namuna Qurilish Invest» MChJ\",\n    \"unit\": null,\n    \"source_text\": \"Buyurtmachi: «Namuna Qurilish Invest» MChJ\",\n    \"page\": 1\n  },\n  \"construction_type\": {\n    \"value\": \"Yangi qurilish\",\n    \"unit\": null,\n    \"source_text\": \"Qurilish turi: Yangi qurilish\",\n    \"page\": 1\n  },\n  \"site_areas\": [],\n  \"buildings\": [\n    {\n      \"name\": {\n        \"value\": \"Tip-2\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"type\": {\n        \"value\": \"Turar joy binosi\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"count\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floors\": {\n        \"value\": \"16\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"footprint_area\": {\n        \"value\": \"600.3\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"total_area\": {\n        \"value\": \"9410.0\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"usable_area\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"volume\": {\n        \"value\": \"36036.0\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-2 16 600.3 | 9410.0 | 36036.0\",\n        \"page\": 1\n      },\n      \"plan_size\": {\n        \"value\": \"26.97 × 26.89\",\n        \"unit\": \"m\",\n        \"source_text\": \"Tip-2 turar joy binosi 16 qavatli, tarxdagi o'lchami 26.97 × 26.89 m.\",\n        \"page\": 2\n      },\n      \"apartments\": {\n        \"value\": \"96\",\n        \"unit\": \"ta\",\n        \"source_text\": \"Tip-2: xonadonlar soni 96 ta.\",\n        \"page\": 2\n      },\n      \"reference\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floor_heights\": [\n        {\n          \"level\": \"yerto'la\",\n          \"value\": \"3.2\",\n          \"unit\": \"m\",\n          \"source_text\": \"Tip-2: yerto'la balandligi 3.2 m, turar joy qavatlari balandligi 3.0 m.\",\n          \"page\": 2\n        },\n        {\n          \"level\": \"turar joy qavatlari\",\n          \"value\": \"3.0\",\n          \"unit\": \"m\",\n          \"source_text\": \"Tip-2: yerto'la balandligi 3.2 m, turar joy qavatlari balandligi 3.0 m.\",\n          \"page\": 2\n        }\n      ]\n    },\n    {\n      \"name\": {\n        \"value\": \"Tip-1\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"type\": {\n        \"value\": \"Turar joy binosi\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"count\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floors\": {\n        \"value\": \"12\",\n        \"unit\": null,\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"footprint_area\": {\n        \"value\": \"812.5\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"total_area\": {\n        \"value\": \"9980.4\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"usable_area\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"volume\": {\n        \"value\": \"52397.2\",\n        \"unit\": \"m2\",\n        \"source_text\": \"Turar joy binosi | Tip-1 12 812.5 | 9980.4 | 52397.2\",\n        \"page\": 1\n      },\n      \"plan_size\": {\n        \"value\": \"30.20 × 27.10\",\n        \"unit\": \"m\",\n        \"source_text\": \"Tip-1 turar joy binosi 12 qavatli, tarxdagi o'lchami 30.20 × 27.10 m, xonadonlar soni 88 ta.\",\n        \"page\": 2\n      },\n      \"apartments\": {\n        \"value\": \"88\",\n        \"unit\": \"ta\",\n        \"source_text\": \"Tip-1 turar joy binosi 12 qavatli, tarxdagi o'lchami 30.20 × 27.10 m, xonadonlar soni 88 ta.\",\n        \"page\": 2\n      },\n      \"reference\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null,\n        \"page\": null\n      },\n      \"floor_heights\": []\n    }\n  ],\n  \"totals\": {\n    \"footprint_area\": {\n      \"value\": \"1412.8\",\n      \"unit\": \"m2\",\n      \"source_text\": \"Jami | 1412.8 | 19390.4 | 88433.2\",\n      \"page\": 1\n    },\n    \"total_area\": {\n      \"value\": \"19390.4\",\n      \"unit\": \"m2\",\n      \"source_text\": \"Jami | 1412.8 | 19390.4 | 88433.2\",\n      \"page\": 1\n    },\n    \"volume\": {\n      \"value\": \"88433.2\",\n      \"unit\": \"m2\",\n      \"source_text\": \"Jami | 1412.8 | 19390.4 | 88433.2\",\n      \"page\": 1\n    }\n  }\n}",
+     "content": "{\"conclusion_number\": {\"value\": \"284459\", \"unit\": null, \"source_text\": \"DAVLAT EKSPERTIZASI XULOSASI № 284459\", \"page\": 1}, \"conclusion_date\": {\"value\": \"12.10.2026\", \"unit\": null, \"source_text\": \"Sana: 12.10.2026\", \"page\": 1}, \"application_number\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"address\": {\"value\": \"Samarqand shahri, Maysazor ko'chasi\", \"unit\": null, \"source_text\": \"Obyekt manzili: Samarqand shahri, Maysazor ko'chasi\", \"page\": 1}, \"customer\": {\"value\": \"«Namuna Qurilish Invest» MChJ\", \"unit\": null, \"source_text\": \"Buyurtmachi: «Namuna Qurilish Invest» MChJ\", \"page\": 1}, \"construction_type\": {\"value\": \"Yangi qurilish\", \"unit\": null, \"source_text\": \"Qurilish turi: Yangi qurilish\", \"page\": 1}, \"site_areas\": [], \"buildings\": [{\"name\": {\"value\": \"Tip-2\", \"unit\": null, \"source_text\": \"Tip-2\", \"page\": 1}, \"type\": {\"value\": \"Turar joy binosi\", \"unit\": null, \"source_text\": \"Turar joy binosi | Tip-2\", \"page\": 1}, \"count\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"floors\": {\"value\": \"16\", \"unit\": null, \"source_text\": \"Tip-2 16\", \"page\": 1}, \"footprint_area\": {\"value\": \"600.3\", \"unit\": \"m2\", \"source_text\": \"Tip-2 16 600.3\", \"page\": 1}, \"total_area\": {\"value\": \"9410.0\", \"unit\": \"m2\", \"source_text\": \"9410.0\", \"page\": 1}, \"usable_area\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"volume\": {\"value\": \"36036.0\", \"unit\": \"m2\", \"source_text\": \"36036.0\", \"page\": 1}, \"plan_size\": {\"value\": \"26.97 × 26.89\", \"unit\": \"m\", \"source_text\": \"tarxdagi o'lchami 26.97 × 26.89 m\", \"page\": 2}, \"apartments\": {\"value\": \"96\", \"unit\": \"ta\", \"source_text\": \"Tip-2: xonadonlar soni 96 ta\", \"page\": 2}, \"reference\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"floor_heights\": [{\"level\": \"yerto'la balandligi\", \"value\": \"3.2\", \"unit\": \"m\", \"source_text\": \"yerto'la balandligi 3.2 m\", \"page\": 2}, {\"level\": \"turar joy qavatlari balandligi\", \"value\": \"3.0\", \"unit\": \"m\", \"source_text\": \"turar joy qavatlari balandligi 3.0 m\", \"page\": 2}]}, {\"name\": {\"value\": \"Tip-1\", \"unit\": null, \"source_text\": \"Tip-1\", \"page\": 1}, \"type\": {\"value\": \"Turar joy binosi\", \"unit\": null, \"source_text\": \"Turar joy binosi | Tip-1\", \"page\": 1}, \"count\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"floors\": {\"value\": \"12\", \"unit\": null, \"source_text\": \"Tip-1 12\", \"page\": 1}, \"footprint_area\": {\"value\": \"812.5\", \"unit\": \"m2\", \"source_text\": \"Tip-1 12 812.5\", \"page\": 1}, \"total_area\": {\"value\": \"9980.4\", \"unit\": \"m2\", \"source_text\": \"9980.4\", \"page\": 1}, \"usable_area\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"volume\": {\"value\": \"52397.2\", \"unit\": \"m2\", \"source_text\": \"52397.2\", \"page\": 1}, \"plan_size\": {\"value\": \"30.20 × 27.10\", \"unit\": \"m\", \"source_text\": \"tarxdagi o'lchami 30.20 × 27.10 m\", \"page\": 2}, \"apartments\": {\"value\": \"88\", \"unit\": \"ta\", \"source_text\": \"xonadonlar soni 88 ta\", \"page\": 2}, \"reference\": {\"value\": null, \"unit\": null, \"source_text\": null, \"page\": null}, \"floor_heights\": []}], \"totals\": {\"footprint_area\": {\"value\": \"1412.8\", \"unit\": \"m2\", \"source_text\": \"Jami | 1412.8\", \"page\": 1}, \"total_area\": {\"value\": \"19390.4\", \"unit\": \"m2\", \"source_text\": \"19390.4\", \"page\": 1}, \"volume\": {\"value\": \"88433.2\", \"unit\": \"m2\", \"source_text\": \"88433.2\", \"page\": 1}}}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -989,18 +989,18 @@
     },
     "logprobs": null,
     "finish_reason": "stop",
-    "stop_reason": null,
+    "stop_reason": 106,
     "token_ids": null,
     "routed_experts": null,
     "weight_versions": null
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
   "usage": {
-   "prompt_tokens": 1987,
-   "total_tokens": 4322,
-   "completion_tokens": 2335,
+   "prompt_tokens": 2002,
+   "total_tokens": 3393,
+   "completion_tokens": 1391,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

@@ -1,11 +1,11 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T13:49:40",
- "duration_s": 2.07,
+ "time": "2026-11-26T10:16:16",
+ "duration_s": 1.665,
  "prompt_hash": "f3acb53b6d0f519399c28b79bf77c2755c9bc7ebe8c24fa4016ea2df95a52342",
  "request": {
-  "model": "qwen3.8-27b",
+  "model": "gemma-4-31b-it",
   "messages": [
    {
     "role": "system",
@@ -68,16 +68,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-8ec0dad2b41f0db7",
+  "id": "chatcmpl-8b4c98b627297c0f",
   "object": "chat.completion",
-  "created": 1795614578,
-  "model": "qwen3.8-27b",
+  "created": 1795688174,
+  "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"reason\": \"Matnda 'План на отм. 0.000' (0.000 belgisidagi reja) yozilgan, bu odatda birinchi qavat yoki yer sirtidagi asosiy reja bo'lib, qavat rejalariga kiradi.\", \"answer\": \"qavatlar\", \"first\": 1, \"last\": 1}",
+     "content": "{\"reason\": \"Matndagi 'План на отм. 0.000' yozuvi odatda birinchi qavat yoki kirish qavatini anglatadi.\", \"answer\": \"qavatlar\", \"first\": 1, \"last\": 1}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -85,18 +85,18 @@
     },
     "logprobs": null,
     "finish_reason": "stop",
-    "stop_reason": null,
+    "stop_reason": 106,
     "token_ids": null,
     "routed_experts": null,
     "weight_versions": null
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
   "usage": {
-   "prompt_tokens": 400,
-   "total_tokens": 491,
-   "completion_tokens": 91,
+   "prompt_tokens": 396,
+   "total_tokens": 458,
+   "completion_tokens": 62,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }

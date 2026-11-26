@@ -308,6 +308,11 @@ def make_value(field_name: str, raw: dict, file: str, page: int | None, texts: d
         status, reason, number = verify.UNVERIFIED, f"sahifa raqami noto'g'ri yoki berilmagan: {page!r}", None
     else:
         status, reason, number = verify.verify_source(value, source, texts[page], numeric)
+        line = verify.line_of_number(value, source, texts[page]) if status == verify.UNVERIFIED and numeric else None
+        if line:
+            # the model copied only the number: its one line on the page carries the label, so check that instead
+            status, reason, number = verify.verify_source(value, line, texts[page], numeric)
+            source = line if status == verify.ACCEPTED else source
     flags: list[str] = []
     if status == verify.ACCEPTED and expected in ("m2", "m3"):
         flag = verify.unit_flag(expected, unit)

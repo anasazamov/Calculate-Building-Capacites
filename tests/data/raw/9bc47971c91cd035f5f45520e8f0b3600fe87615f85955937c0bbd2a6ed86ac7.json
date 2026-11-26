@@ -1,11 +1,11 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-25T13:49:10",
- "duration_s": 27.938,
+ "time": "2026-11-26T10:16:01",
+ "duration_s": 27.479,
  "prompt_hash": "09647f4a79eb1210eedd76b2112b6b492939e7992e8efa3df1ccea428617070e",
  "request": {
-  "model": "qwen3.8-27b",
+  "model": "gemma-4-31b-it",
   "messages": [
    {
     "role": "system",
@@ -597,16 +597,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-84ea07e44bd348a3",
+  "id": "chatcmpl-8b74dd161173cd44",
   "object": "chat.completion",
-  "created": 1795614522,
-  "model": "qwen3.8-27b",
+  "created": 1795688133,
+  "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\n  \"project_code\": {\n    \"value\": null,\n    \"unit\": null,\n    \"source_text\": null\n  },\n  \"addresses\": [\n    {\n      \"value\": \"г. Наманган, ул. Темир йул\",\n      \"unit\": null,\n      \"source_text\": \"Жилой комплекс. г. Наманган, ул. Темир йул\"\n    }\n  ],\n  \"site_areas\": [],\n  \"buildings\": [\n    {\n      \"name\": {\n        \"value\": \"16-ти этажный жилой дом Тип-2\",\n        \"unit\": null,\n        \"source_text\": \"16-ти этажный жилой дом Тип-2\"\n      },\n      \"count\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null\n      },\n      \"floors\": {\n        \"value\": \"16\",\n        \"unit\": null,\n        \"source_text\": \"16-ти этажный жилой дом Тип-2\"\n      },\n      \"footprint_area\": {\n        \"value\": \"600.3\",\n        \"unit\": \"м2\",\n        \"source_text\": \"Площадь застройки | м2 | 600.3\"\n      },\n      \"total_area\": {\n        \"value\": \"9410.0\",\n        \"unit\": \"м2\",\n        \"source_text\": \"Общая площадь здания | м2 | 9410.0\"\n      },\n      \"volume\": {\n        \"value\": \"36036\",\n        \"unit\": \"м3\",\n        \"source_text\": \"Строительный объём | м3 | 36036\"\n      },\n      \"volume_above_ground\": {\n        \"value\": \"34619.3\",\n        \"unit\": \"м3\",\n        \"source_text\": \"в том числе надземная часть | м3 | 34619.3\"\n      },\n      \"volume_below_ground\": {\n        \"value\": \"1416.7\",\n        \"unit\": \"м3\",\n        \"source_text\": \"подземная часть | м3 | 1416.7\"\n      },\n      \"plan_size\": {\n        \"value\": null,\n        \"unit\": null,\n        \"source_text\": null\n      },\n      \"apartments\": {\n        \"value\": \"96\",\n        \"unit\": \"шт\",\n        \"source_text\": \"Количество квартир | шт | 96\"\n      }\n    }\n  ],\n  \"area_breakdown\": [\n    {\n      \"name\": \"Подвал на отм. -3.200\",\n      \"level_mark\": \"-3.200\",\n      \"value\": \"465.9\",\n      \"unit\": \"м2\",\n      \"source_text\": \"Подвал на отм. -3.200 | м2 | 465.9\"\n    },\n    {\n      \"name\": \"1-этаж\",\n      \"level_mark\": null,\n      \"value\": \"442.6\",\n      \"unit\": \"м2\",\n      \"source_text\": \"1-этаж | м2 | 442.6\"\n    },\n    {\n      \"name\": \"2–16 этажи\",\n      \"level_mark\": null,\n      \"value\": \"7439.3\",\n      \"unit\": \"м2\",\n      \"source_text\": \"2–16 этажи | м2 | 7439.3\"\n    },\n    {\n      \"name\": \"Общая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная)\",\n      \"level_mark\": null,\n      \"value\": \"1026.4\",\n      \"unit\": \"м2\",\n      \"source_text\": \"Общая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная) | м2 | 1026.4\"\n    },\n    {\n      \"name\": \"Тех. помещения на отм. +52.420\",\n      \"level_mark\": \"+52.420\",\n      \"value\": \"35.8\",\n      \"unit\": \"м2\",\n      \"source_text\": \"Тех. помещения на отм. +52.420 | м2 | 35.8\"\n    }\n  ],\n  \"floor_heights\": [\n    {\n      \"level\": \"этаж\",\n      \"value\": \"3.0\",\n      \"unit\": \"м\",\n      \"source_text\": \"Высота этажа - 3.0 м.\"\n    },\n    {\n      \"level\": \"подвал\",\n      \"value\": \"3.2\",\n      \"unit\": \"м\",\n      \"source_text\": \"Высота подвала - 3.2 м.\"\n    }\n  ]\n}",
+     "content": "{\"project_code\": { \"value\": null, \"unit\": null, \"source_text\": null }, \"addresses\": [{\"value\": \"г. Наманган, ул. Темир йул\", \"unit\": null, \"source_text\": \"Жилой комплекс. г. Наманган, ул. Темир йул\"}], \"site_areas\": [], \"buildings\": [{\"name\": { \"value\": \"16-ти этажный жилой дом Тип-2\", \"unit\": null, \"source_text\": \"16-ти этажный жилой дом Тип-2\" }, \"count\": { \"value\": null, \"unit\": null, \"source_text\": null }, \"floors\": { \"value\": \"16\", \"unit\": null, \"source_text\": \"16-ти этажный жилой дом Тип-2\" }, \"footprint_area\": { \"value\": \"600.3\", \"unit\": \"м2\", \"source_text\": \"Площадь застройки | м2 | 600.3\" }, \"total_area\": { \"value\": \"9410.0\", \"unit\": \"м2\", \"source_text\": \"Общая площадь здания | м2 | 9410.0\" }, \"volume\": { \"value\": \"36036\", \"unit\": \"м3\", \"source_text\": \"Строительный объём | м3 | 36036\" }, \"volume_above_ground\": { \"value\": \"34619.3\", \"unit\": \"м3\", \"source_text\": \"в том числе надземная часть | м3 | 34619.3\" }, \"volume_below_ground\": { \"value\": \"1416.7\", \"unit\": \"м3\", \"source_text\": \"подземная часть | м3 | 1416.7\" }, \"plan_size\": { \"value\": null, \"unit\": null, \"source_text\": null }, \"apartments\": { \"value\": \"96\", \"unit\": \"шт\", \"source_text\": \"Количество квартир | шт | 96\" }}], \"area_breakdown\": [{\"name\": \"Подвал на отм. -3.200\", \"level_mark\": \"-3.200\", \"value\": \"465.9\", \"unit\": \"м2\", \"source_text\": \"Подвал на отм. -3.200 | м2 | 465.9\"}, {\"name\": \"1-этаж\", \"level_mark\": null, \"value\": \"442.6\", \"unit\": \"м2\", \"source_text\": \"1-этаж | м2 | 442.6\"}, {\"name\": \"2–16 этажи\", \"level_mark\": null, \"value\": \"7439.3\", \"unit\": \"м2\", \"source_text\": \"2–16 этажи | м2 | 7439.3\"}, {\"name\": \"Общая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная)\", \"level_mark\": null, \"value\": \"1026.4\", \"unit\": \"м2\", \"source_text\": \"Общая площадь (лестничная клетка, приквартирная площадка, лифтовой холл, электрощитовая, инвентарная) | м2 | 1026.4\"}, {\"name\": \"Тех. помещения на отм. +52.420\", \"level_mark\": \"+52.420\", \"value\": \"35.8\", \"unit\": \"м2\", \"source_text\": \"Тех. помещения на отм. +52.420 | м2 | 35.8\"}], \"floor_heights\": [{\"level\": \"этажа\", \"value\": \"3.0\", \"unit\": \"м\", \"source_text\": \"Высота этажа - 3.0 м\"}, {\"level\": \"подвала\", \"value\": \"3.2\", \"unit\": \"м\", \"source_text\": \"Высота подвала - 3.2 м\"}]}",
      "refusal": null,
      "audio": null,
      "function_call": null,
@@ -614,18 +614,18 @@
     },
     "logprobs": null,
     "finish_reason": "stop",
-    "stop_reason": null,
+    "stop_reason": 106,
     "token_ids": null,
     "routed_experts": null,
     "weight_versions": null
    }
   ],
   "service_tier": null,
-  "system_fingerprint": "vllm-0.34.0-1c19d697",
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
   "usage": {
-   "prompt_tokens": 1733,
-   "total_tokens": 2918,
-   "completion_tokens": 1185,
+   "prompt_tokens": 1761,
+   "total_tokens": 2723,
+   "completion_tokens": 962,
    "completion_tokens_details": {
     "reasoning_tokens": 0
    }
