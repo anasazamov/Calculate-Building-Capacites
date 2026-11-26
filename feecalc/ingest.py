@@ -34,7 +34,7 @@ COLUMN_SEP = " | "
 IMAGE_MIN_SHARE = 0.01       # images smaller than this share of the page are not read
 VLM_MAX_SIDE = 2048           # longest side, pixels, of an image sent to the vision model
 VLM_MIN_DPI = 150             # a small image is enlarged to at least this resolution
-VLM_MAX_TOKENS = 11000        # a dense table is long: one item per cell (+ ~4k image tokens < 16384 context)
+VLM_MAX_TOKENS = 6000         # the longest table answer measured was ~1.9k tokens; a denser image is read in tiles
 VLM_WORKERS = 8               # images of one document read at the same time
 VLM_VERSION = 1               # part of the cache key: raise it when the question or the settings change
 VLM_CACHE = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm"
@@ -175,15 +175,83 @@ def _image_regions(p: pymupdf.Page) -> list[tuple[pymupdf.Rect, int]]:
     return out
 
 
-def read_image(png: bytes) -> dict:
-    """What the vision model reads in one image: {"kind", "legible", "items": [{"text", "bbox_2d"}]}.
-    Raises llm.ModelError when the server is down or the answer is malformed: nothing is skipped silently."""
+VLM_RUN_LIMIT = 8      # this many items in a row with the same text: the answer has degenerated into a loop
+VLM_TILE_OVERLAP = 0.06
+
+
+def _ask_vlm(png: bytes) -> dict:
+    """One reading of one image. A truncated answer, or one that degenerated into a loop (the same text over
+    and over with the box sliding along, a known failure of vision models on dense drawings), raises
+    llm.MalformedResponse."""
     m = llm.vlm()
     if not llm.port_open(m):
         raise llm.ModelError(f"Rasmlarni o'qiydigan model (VLM) serveri ishlamayapti: {m.url}")
-    return llm.ask(m, VLM_SYSTEM, "Read this image.", VLM_SCHEMA, VLM_MAX_TOKENS, VLM_RAW,
+    data = llm.ask(m, VLM_SYSTEM, "Read this image.", VLM_SCHEMA, VLM_MAX_TOKENS, VLM_RAW,
                    sampling={"temperature": 0.0, "top_p": 1.0, "top_k": 1, "presence_penalty": 0},
                    images=[png]).data
+    run = 1
+    texts = [i["text"].strip() for i in data["items"]]
+    for a, b in zip(texts, texts[1:]):
+        run = run + 1 if a == b else 1
+        if run >= VLM_RUN_LIMIT:
+            raise llm.RepetitionLoop(f"vlm: {run} ta ketma-ket bir xil yozuv {a!r}")
+    return data
+
+
+def _tiles(png: bytes) -> list[tuple[bytes, tuple[float, float, float, float]]]:
+    """The image cut into 2 x 2 overlapping tiles, each with its place on the image's 0-1000 grid."""
+    out = []
+    with MUPDF_LOCK, pymupdf.open(stream=png, filetype="png") as doc:
+        page = doc[0]
+        w, h = page.rect.width, page.rect.height
+        zoom = pymupdf.Pixmap(png).width / w  # keep the image's own pixels
+        for ty in range(2):
+            for tx in range(2):
+                fx0, fy0 = max(0.0, tx / 2 - VLM_TILE_OVERLAP), max(0.0, ty / 2 - VLM_TILE_OVERLAP)
+                fx1, fy1 = min(1.0, (tx + 1) / 2 + VLM_TILE_OVERLAP), min(1.0, (ty + 1) / 2 + VLM_TILE_OVERLAP)
+                clip = pymupdf.Rect(fx0 * w, fy0 * h, fx1 * w, fy1 * h)
+                pix = page.get_pixmap(clip=clip, matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+                out.append((pix.tobytes("png"), (fx0, fy0, fx1, fy1)))
+    return out
+
+
+def _read_tiled(png: bytes) -> dict:
+    """Read the image in four tiles and put the items back on the whole image's grid. A tile that still cannot
+    be read makes the image count as not legible (a warning for staff), not a failed job."""
+    items: list[dict] = []
+    kinds: list[str] = []
+    legible = True
+    for tile, (fx0, fy0, fx1, fy1) in _tiles(png):
+        try:
+            a = _ask_vlm(tile)
+        except llm.MalformedResponse:
+            legible = False
+            continue
+        kinds.append(a["kind"])
+        legible = legible and a["legible"]
+        s = llm.VLM_COORD_SCALE
+        for it in a["items"]:
+            x0, y0, x1, y1 = it["bbox_2d"]
+            box = [round((fx0 + x0 / s * (fx1 - fx0)) * s), round((fy0 + y0 / s * (fy1 - fy0)) * s),
+                   round((fx0 + x1 / s * (fx1 - fx0)) * s), round((fy0 + y1 / s * (fy1 - fy0)) * s)]
+            cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+            # the same writing read again in the overlap of two tiles
+            if any(k["text"] == it["text"] and k["bbox_2d"][0] <= cx <= k["bbox_2d"][2]
+                   and k["bbox_2d"][1] <= cy <= k["bbox_2d"][3] for k in items):
+                continue
+            items.append({"text": it["text"], "bbox_2d": box})
+    kind = max(set(kinds), key=kinds.count) if kinds else "other"
+    return {"kind": kind, "legible": legible, "items": items}
+
+
+def read_image(png: bytes) -> dict:
+    """What the vision model reads in one image: {"kind", "legible", "items": [{"text", "bbox_2d"}]}.
+    A server that is down raises llm.ModelError (the job stops: nothing is skipped silently). An answer that is
+    truncated or degenerated is read again in tiles, which also gives finer boxes on a dense drawing."""
+    try:
+        return _ask_vlm(png)
+    except llm.MalformedResponse:
+        return _read_tiled(png)
 
 
 def _split_item(text: str, x0: float, y0: float, x1: float, y1: float) -> list[Word]:
@@ -247,9 +315,15 @@ def _read_images(pending: Pending, pdf_key: str) -> None:
     if not pending:
         return
     with ThreadPoolExecutor(max_workers=VLM_WORKERS) as pool:
-        answers = {(i, n): pool.submit(read_image, png) for i, _r, pngs in pending for n, png in enumerate(pngs)}
+        # the same picture placed on several pages (a title block, a repeated table) is read once
+        unique: dict[str, object] = {}
+        for _i, _r, pngs in pending:
+            for png in pngs:
+                h = hashlib.sha256(png).hexdigest()
+                if h not in unique:
+                    unique[h] = pool.submit(read_image, png)
         for i, regions, pngs in pending:
-            read = [answers[(i, n)].result() for n in range(len(pngs))]  # an error is raised here
+            read = [unique[hashlib.sha256(png).hexdigest()].result() for png in pngs]  # an error is raised here
             _write_cache(pdf_key, i, _page_regions_read(read, regions))
 
 

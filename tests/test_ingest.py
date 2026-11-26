@@ -132,6 +132,30 @@ def test_a_value_found_only_in_image_text_is_flagged(tmp_path: Path, monkeypatch
     assert from_image["flags"] == [extract.IMAGE_FLAG] and from_text["flags"] == []
 
 
+def test_a_degenerate_answer_is_read_again_in_tiles_on_the_whole_image_grid(monkeypatch):
+    import pymupdf
+    from feecalc import llm
+    png = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 400, 200), False).tobytes("png")
+    calls: list[tuple[int, int]] = []
+
+    def fake(image: bytes) -> dict:
+        pix = pymupdf.Pixmap(image)
+        calls.append((pix.width, pix.height))
+        if pix.width == 400:                                                 # the whole image: a loop
+            items = [{"text": "402,80", "bbox_2d": [810, 12 * i, 832, 12 * i + 8]} for i in range(10)]
+            return {"kind": "drawing", "legible": True, "items": items}
+        return {"kind": "drawing", "legible": True, "items": [{"text": "A", "bbox_2d": [0, 0, 1000, 1000]}]}
+
+    monkeypatch.setattr(llm, "port_open", lambda m: True)
+    monkeypatch.setattr(llm, "ask", lambda *a, **k: type("R", (), {"data": fake(k["images"][0])})())
+    read = ingest.read_image(png)
+    assert calls[0] == (400, 200) and len(calls) == 5                       # whole image, then four tiles
+    assert all(c[0] < 400 for c in calls[1:])
+    boxes = [i["bbox_2d"] for i in read["items"]]
+    assert [0, 0, 560, 560] in boxes and [440, 440, 1000, 1000] in boxes     # tiles put back on the 0-1000 grid
+    assert read["legible"] and read["kind"] == "drawing"
+
+
 def test_image_request_carries_the_picture_and_stores_only_its_hash(tmp_path: Path, monkeypatch):
     import json
     from feecalc import llm
