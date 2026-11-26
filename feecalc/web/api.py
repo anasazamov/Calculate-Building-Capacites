@@ -123,7 +123,7 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
     def health(_: str = Depends(client)) -> dict:
         """Whether jobs can be read right now."""
         from .. import llm
-        return {"model1": llm.port_open(llm.model1()), "model2": llm.port_open(llm.model2()),
+        return {"model1": llm.port_open(llm.model1()),
                 "queued": len(h.store.unfinished_job_ids()), "norm_documents": len(h.knowledge.documents())}
 
     @router.post("/jobs", status_code=202)

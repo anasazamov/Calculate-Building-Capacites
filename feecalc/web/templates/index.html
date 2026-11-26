@@ -4,7 +4,7 @@
   <h1>Yangi hisob-kitob</h1>
   <p class="lead">Loyiha albomini va ekspertiza xulosasini yuklang. Tizim hajmlarni loyihadan o'qiydi, xulosani loyihaga solishtirib tekshiradi, yig'imni tavsiya qiladi — siz tasdiqlaysiz.</p>
   {% if not model1_up %}<div class="callout bad"><b>O'qish modeli hozir ishlamayapti.</b> Yuklangan ish xato bilan to'xtaydi — avval administratorga murojaat qiling.</div>
-  {% elif not model2_up %}<div class="callout info">Ikkinchi model hozir ishlamayapti: hujjatlar bitta model bilan o'qiladi, ikki model solishtiruvi bo'lmaydi.</div>{% endif %}
+  {% endif %}
   <form method="post" action="/jobs" enctype="multipart/form-data" id="upload">
     <div class="dropgrid">
       <label class="dropzone" data-dropzone>

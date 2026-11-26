@@ -54,7 +54,7 @@ def classify_sheets(m: llm.Model, pages: list[ingest.Page], raw_dir: Path) -> di
 def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path,
                    progress: Progress = lambda stage: None,
                    report: Callable[[int, int], None] = lambda done, total: None) -> dict:
-    """Read both documents with every available model. Any failure propagates to the job boundary.
+    """Read both documents with the reading model. Any failure propagates to the job boundary.
 
     `project_pdfs` may be empty: then only the conclusion is read and every comparison stays
     in the "project not provided" state. `report(done, total)` is called as reading requests
@@ -62,9 +62,8 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     """
     m1 = llm.model1()
     if not llm.server_ready(m1):
-        raise llm.ModelError(f"1-model serveri tayyor emas: {m1.url}")
-    m2 = llm.model2()
-    models = [m1] + ([m2] if llm.server_ready(m2) else [])
+        raise llm.ModelError(f"Model serveri tayyor emas: {m1.url}")
+    models = [m1]
     raw_dir, image_dir = job_dir / "raw", job_dir / "images"
     timing: dict[str, float] = {}
 
@@ -98,7 +97,7 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
 
     report(0, total)
 
-    # Each document is read separately; the two models run side by side (separate servers).
+    # Each document is read separately (one entry per model in `models`).
     def read_all(reader: Callable[[llm.Model], dict]) -> dict[str, dict]:
         with ThreadPoolExecutor(max_workers=len(models)) as pool:
             return dict(zip([m.key for m in models], pool.map(reader, models)))
@@ -217,7 +216,7 @@ def candidate_questions(project: dict) -> list[str]:
 def rejudge(result: dict, job_dir: Path) -> dict:
     """Run the judgment stage again on a job that is already read (after the questions changed, or for a job read
     before the stage existed). Reading is not repeated. Returns the result with fresh judgments and plan index."""
-    models = [m for m in (llm.model1(), llm.model2()) if m.key in result["models"] and llm.server_ready(m)]
+    models = [m for m in (llm.model1(),) if llm.server_ready(m)]
     if not models:
         raise llm.ModelError("Mulohaza uchun model serveri tayyor emas")
     project_files = []

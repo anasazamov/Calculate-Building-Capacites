@@ -608,10 +608,9 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
     # ---------- pages ----------
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> Response:
-        m1, m2 = llm.model1(), llm.model2()
         return templates.TemplateResponse(request, "index.html", {
             "jobs": store.jobs(), "staff": staff(request), "decided": store.decision_counts(),
-            "model1_up": llm.port_open(m1), "model2_up": llm.port_open(m2)})
+            "model1_up": llm.port_open(llm.model1())})
 
     @app.post("/whoami")
     def whoami(name: str = Form(...), next: str = Form("/")) -> Response:

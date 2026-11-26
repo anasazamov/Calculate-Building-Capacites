@@ -50,7 +50,7 @@ class RepetitionLoop(MalformedResponse):
 
 @dataclass(frozen=True)
 class Model:
-    key: str                   # "model1" | "model2"
+    key: str                   # "model1": the reader (stored results are keyed by it)
     name: str                  # served-model-name
     url: str                   # http://127.0.0.1:8001/v1
     extra: dict = field(default_factory=dict)  # extra request-body fields
@@ -62,24 +62,17 @@ class Model:
 
 
 def model1() -> Model:
-    return Model("model1", os.environ.get("FEECALC_MODEL1_NAME", "qwen3.8-27b"),
+    """The one reading model: Gemma-4-31B-it (scripts/vllm_model1.sh).
+
+    A second reader (Qwen3.8-27B) was removed on 2026-11-26: on the inspector's cases both models made
+    the same mistakes, so their agreement was not an independent check and only doubled the cost.
+    Results stay keyed "model1"; jobs read earlier with two models still carry a "model2" entry."""
+    return Model("model1", os.environ.get("FEECALC_MODEL1_NAME", "gemma-4-31b-it"),
                  os.environ.get("FEECALC_MODEL1_URL", "http://127.0.0.1:8001/v1"),
                  {"chat_template_kwargs": {"enable_thinking": False}})
 
 
-def model2() -> Model:
-    return Model("model2", os.environ.get("FEECALC_MODEL2_NAME", "gemma-4-31b-it"),
-                 os.environ.get("FEECALC_MODEL2_URL", "http://127.0.0.1:8002/v1"),
-                 {"chat_template_kwargs": {"enable_thinking": False}})
-
-
-def model3() -> Model:
-    """A further candidate used only for comparison runs (scripts); the web app uses models 1 and 2."""
-    return Model("model3", os.environ.get("FEECALC_MODEL3_NAME", "granite-4.1-30b"),
-                 os.environ.get("FEECALC_MODEL3_URL", "http://127.0.0.1:8003/v1"))
-
-
-MODELS = {"model1": model1, "model2": model2, "model3": model3}
+MODELS = {"model1": model1}
 
 
 def port_open(m: Model) -> bool:
@@ -224,7 +217,7 @@ def canary(m: Model, raw_dir: Path) -> Response:
 
 
 if __name__ == "__main__":
-    # python -m feecalc.llm canary model1|model2  -> exit code 0 means healthy
+    # python -m feecalc.llm canary model1  -> exit code 0 means healthy
     action, which = sys.argv[1], sys.argv[2]
     assert action == "canary", action
     chosen = MODELS[which]()
