@@ -111,31 +111,30 @@ def decide_kt(construction: dict | None) -> dict:
                      construction)
 
 
-_KO = (
-    ("industrial", re.compile(r"sanoat|zavod|fabrika|ishlab\s+chiqarish|\btsex|\bsex\b|omborxona|\bombor|sklad"
-                              r"|proizvodstv|promyshlen")),
-    ("social", re.compile(r"oquv\s+markaz|talim|maktab|bogcha|litsey|kollej|universitet|institut|tibbiy|tibbiyot"
-                          r"|klinika|shifoxona|poliklinika|diagnostik|stomatolog|meditsin|uchebn|shkol|bolnits")),
-)
-_KO_NAMES = {"industrial": "sanoat binosi", "social": "ijtimoiy xususiy obyekt"}
+_KO_ANSWERS = {"ijtimoiy": "social", "sanoat": "industrial", "boshqa": "other"}
+_KO_NAMES = {"social": "ijtimoiy xususiy obyekt", "industrial": "sanoat binosi", "other": "boshqa obyektlar"}
+_STATE_NOTE = " Davlat ulushi 50 foiz va undan ortiq bo'lgan loyiha bo'lsa, qo'lda o'zgartiring."
 
 
-def decide_ko(description: dict | None) -> dict:
-    """Object type from the words of the object description. A state share of 50% cannot be read from documents."""
-    if not description or not description.get("value"):
-        return _decision(None, "Xulosadan obyekt nomi o'qilmadi — obyekt turini tanlang")
-    text = _plain(str(description["value"]))
-    hits = [(m.start(), code, m.group(0)) for code, pattern in _KO for m in [pattern.search(text)] if m]
-    note = " Davlat ulushi 50 foiz va undan ortiq bo'lgan loyiha bo'lsa, qo'lda o'zgartiring."
-    if not hits:
-        return _decision("other", "Obyekt nomida ijtimoiy yoki sanoat obyektiga xos so'z topilmadi — «Boshqa obyektlar»." + note,
-                         description)
-    _, code, word = min(hits)
-    mixed = len({h[1] for h in hits}) > 1
-    basis = f"Obyekt nomida «{word}» so'zi bor — {_KO_NAMES[code]}." + note
-    if mixed:
-        basis += " Nomda boshqa turga xos so'z ham bor: aralash obyekt bo'lishi mumkin."
-    return _decision(code, basis, description, assumed=mixed)
+def decide_ko(judged: dict | None, description: dict | None = None) -> dict:
+    """Object type from the judgment stage (judge.OBJECT_SYSTEM): the model is given the definitions of the decision's
+    table and the object paragraph, and judges what is BUILT (a building demolished to make room does not count).
+    No word list: "omborxona" in "the storehouse is demolished and a shop built" is not a storehouse being built.
+    `judged` is None when the question was not asked (a job read before it existed) and {} when the models could not tell."""
+    if judged is None:
+        return _decision(None, "Obyekt turi mulohaza bosqichida so'ralmagan (ish oldinroq o'qilgan) — «Mulohaza bosqichini "
+                               "qayta bajarish» tugmasini bosing yoki obyekt turini tanlang", description)
+    answer, why = judged.get("answer"), str(judged.get("reason") or "").strip()
+    if answer in _KO_ANSWERS:
+        code = _KO_ANSWERS[answer]
+        return _decision(code, f"Quriladigan obyekt — {_KO_NAMES[code]} (model mulohazasi: {why})." + _STATE_NOTE, description)
+    if answer == "aralash":
+        # several types at once: the decision gives no reduced rate for a mix, so the full rate stands until staff decide
+        return _decision("other", f"Quriladigan obyekt bir necha turga tegishli (model mulohazasi: {why}) — qisman ijtimoiy yoki "
+                                  "sanoat bo'lsa ham kamaytirilgan koeffitsiyent asossiz qo'llanmaydi: «Boshqa obyektlar» "
+                                  "olindi, tasdiqlang." + _STATE_NOTE, description, assumed=True)
+    return _decision(None, "Obyekt turini matndan aniqlab bo'lmadi" + (f" ({why})" if why else "") + " — obyekt turini tanlang",
+                     description)
 
 
 def decide_kz(place: Place, reference: Reference) -> dict:
@@ -421,19 +420,6 @@ def _scalar(view: dict, label: str, side: str) -> dict | None:
     return None
 
 
-def _ko_from_buildings(view: dict) -> dict:
-    """Without an object description, the largest building's name stands in for it (said as an assumption)."""
-    rows = [r for r in view["hb_rows"] if r["volume"] is not None]
-    if not rows:
-        return decide_ko(None)
-    largest = max(rows, key=lambda r: Decimal(r["volume"]))
-    source = largest["conclusion"] or largest["project"] or {}
-    d = decide_ko({"value": largest["name"], "file": source.get("file"), "page": source.get("page"),
-                   "source_text": source.get("source_text")})
-    return {**d, "assumed": True,
-            "basis": f"Xulosadan obyekt nomi o'qilmadi — eng katta bino nomi («{largest['name']}») bo'yicha: " + d["basis"]}
-
-
 def recommend(view: dict, description: dict | None, reference: Reference, permitted_floors: int | None,
               chosen_ko: str | None = None) -> dict:
     """Everything the system proposes for one job. `chosen_ko` is the object type already picked by
@@ -443,10 +429,21 @@ def recommend(view: dict, description: dict | None, reference: Reference, permit
     place = locate(where)
     coefficients = {
         "kt": decide_kt(_scalar(view, "Qurilish turi", "conclusion")),
-        "ko": decide_ko(description) if description else _ko_from_buildings(view),
+        "ko": decide_ko(view.get("judged_object"), description),
         "kz": decide_kz(place, reference),
         "kj": decide_kj(place, reference),
     }
+    # the object paragraph may name another construction type than the conclusion's "Qurilish turi" line
+    # ("... rekonstruksiya qilib, buzib, o'rnida ... qurilishi" next to "Qurilish turi: Yangi qurilish"): shown, not chosen
+    named = {"yangi": "new", "rekonstruksiya": "reconstruction", "renovatsiya": "renovation"}.get(
+        str((view.get("judged_object") or {}).get("kt")))
+    kt = coefficients["kt"]
+    if named and kt["code"] and named != kt["code"]:
+        labels = {"new": "yangi qurilish", "reconstruction": "rekonstruksiya", "renovation": "renovatsiya"}
+        coefficients["kt"] = {**kt, "assumed": True,
+                              "basis": kt["basis"] + f"; lekin obyekt nomi matnida — {labels[named]} "
+                                       f"(«{str((description or {}).get('value') or '')[:160]}»). Qaysi biri to'g'ri ekanini "
+                                       "ART yoki ruxsatnoma bo'yicha tasdiqlang"}
     ko = chosen_ko or coefficients["ko"]["code"]
     names = " ".join([str((description or {}).get("value") or "")] + [str(b["title"]) for b in view["buildings"]])
     residential = bool(_RESIDENTIAL.search(_plain(names)))

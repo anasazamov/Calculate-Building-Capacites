@@ -45,15 +45,18 @@ def test_construction_type_comes_from_the_conclusion():
     assert decide.decide_kt(None)["code"] is None
 
 
-def test_object_type_from_the_description():
-    assert decide.decide_ko(value("MCHJga qurilish sanoati korxonalari binosini qurish"))["code"] == "industrial"
-    social = decide.decide_ko(value("Birinchi qavatda tibbiy markaz va hususiy maktab binosi"))
-    assert social["code"] == "social" and not social["assumed"]
-    other = decide.decide_ko(value("savdo va maishiy xizmat ko`rsatish binosi qurilishi"))
+def test_object_type_comes_from_the_judgment_of_what_is_built():
+    d = value("Omborxona binosini buzib, o'rnida savdo va o'quv markazi qurilishi")
+    social = decide.decide_ko({"answer": "ijtimoiy", "reason": "o'quv markazi"}, d)
+    assert social["code"] == "social" and not social["assumed"] and "o'quv markazi" in social["basis"]
+    assert decide.decide_ko({"answer": "sanoat", "reason": "ishlab chiqarish"}, d)["code"] == "industrial"
+    other = decide.decide_ko({"answer": "boshqa", "reason": "savdo"}, d)
     assert other["code"] == "other" and "Davlat ulushi" in other["basis"]
-    mixed = decide.decide_ko(value("tibbiy markaz va omborxona"))
-    assert mixed["code"] == "social" and mixed["assumed"]
-    assert decide.decide_ko(None)["code"] is None
+    mixed = decide.decide_ko({"answer": "aralash", "reason": "savdo + o'quv markazi"}, d)
+    assert mixed["code"] == "other" and mixed["assumed"]                    # no reduced rate for a mix without a decision
+    assert decide.decide_ko({}, d)["code"] is None                           # the models could not tell
+    asked_not = decide.decide_ko(None, d)
+    assert asked_not["code"] is None and "qayta bajarish" in asked_not["basis"]
 
 
 def test_zone_and_location_use_the_reference_data():

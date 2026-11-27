@@ -71,14 +71,39 @@ Avval bir-ikki jumla mulohaza, keyin javob. Faqat JSON:
 CANDIDATE_ANSWERS = ("yangi_bino", "takror", "bino_emas", "mavjud", UNSURE)
 
 
+OBJECT_SYSTEM = """Siz infratuzilma yig'imini hisoblovchi mutaxassissiz (VM 151-son qarori, 4-ilova). Ekspertiza xulosasidagi obyekt nomi
+(nima va qayerda quriladi) va binolar ro'yxati beriladi. Ikki savol, faqat QURILADIGAN (yangi) bino(lar) bo'yicha: buziladigan,
+o'rnida qurilish uchun olib tashlanadigan yoki saqlanadigan eski bino hisobga olinmaydi.
+1) "answer" — obyekt turi (Ko):
+- "ijtimoiy" — ijtimoiy xususiy obyekt: o'quv markazi, xususiy maktab, xususiy tibbiyot muassasasi, klinika va shu kabilar (0,8);
+- "sanoat" — sanoat binosi: ishlab chiqarish binosi, omborxona, sanoat-sinov laboratoriyasi (0,5);
+- "boshqa" — qolgan hamma obyektlar: savdo, maishiy xizmat, ofis, mehmonxona, turar joy va hokazo (1);
+- "aralash" — quriladigan bino(lar) yuqoridagilarning bir nechtasiga birdaniga tegishli (masalan, savdo + o'quv markazi);
+- "aniq_emas" — matndan bilib bo'lmaydi.
+(Davlat ulushi 50 foizdan ortiq loyiha hujjatdan aniqlanmaydi — uni so'ramaymiz.)
+2) "kt" — obyekt nomi matnida qurilish turi qanday yozilgan: "yangi" (yangi qurilish), "rekonstruksiya" (mavjud binoni
+rekonstruksiya qilish, shu jumladan buzib o'rnida qurish deb yozilgan bo'lsa), "renovatsiya", yoki matnda yozilmagan bo'lsa "aniq_emas".
+Avval bir-ikki jumla mulohaza, keyin javob. Faqat JSON:
+{"reason": "<mulohaza>", "answer": "ijtimoiy" | "sanoat" | "boshqa" | "aralash" | "aniq_emas",
+ "kt": "yangi" | "rekonstruksiya" | "renovatsiya" | "aniq_emas"}"""
+OBJECT_ANSWERS = ("ijtimoiy", "sanoat", "boshqa", "aralash", UNSURE)
+OBJECT_KT_ANSWERS = ("yangi", "rekonstruksiya", "renovatsiya", UNSURE)
+
+
+def object_question(description: str, buildings: list[str]) -> str:
+    return f"Obyekt nomi: «{description}»\nBinolar ro'yxati: " + ("; ".join(f"«{n}»" for n in buildings[:12]) or "berilmagan")
+
+
 def candidate_question(name: str, listed: list[str]) -> str:
     return f"Qator: «{name}»\nRo'yxatdagi boshqa binolar: " + "; ".join(f"«{n}»" for n in listed[:12])
 
 
-def _schema(answers: tuple[str, ...], floors: bool = False) -> dict:
+def _schema(answers: tuple[str, ...], floors: bool = False, kt: bool = False) -> dict:
     properties: dict = {"reason": {"type": "string", "maxLength": 400}, "answer": {"type": "string", "enum": list(answers)}}
     if floors:
         properties |= {"first": {"type": "integer", "minimum": 0, "maximum": 80}, "last": {"type": "integer", "minimum": 0, "maximum": 80}}
+    if kt:
+        properties |= {"kt": {"type": "string", "enum": list(OBJECT_KT_ANSWERS)}}
     return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
 
 
@@ -98,13 +123,16 @@ def _ask_all(models: list[llm.Model], system: str, schema: dict, items: list[str
 
 
 def run(models: list[llm.Model], structures: list[str], rooms: list[str], sheets: list[str], raw_dir: Path,
-        candidates: list[str] | None = None) -> dict:
-    """Ask the kinds of questions. Returns {"structures", "rooms", "sheets", "candidates", "cut"}: item -> model -> answer.
-    `candidates`: questions about buildings named in the project without any figure (see candidate_question)."""
+        candidates: list[str] | None = None, objects: list[str] | None = None) -> dict:
+    """Ask the kinds of questions. Returns {"objects", "structures", "rooms", "sheets", "candidates", "cut"}: item -> model -> answer.
+    `candidates`: questions about buildings named in the project without any figure (see candidate_question).
+    `objects`: the object question (see object_question): object type Ko, and the construction type the text names."""
     candidates = candidates or []
+    objects = objects or []
     cut = {kind: max(0, len(items) - MAX_ITEMS) for kind, items in (("structures", structures), ("rooms", rooms), ("sheets", sheets),
                                                                        ("candidates", candidates))}
     return {
+        "objects": _ask_all(models, OBJECT_SYSTEM, _schema(OBJECT_ANSWERS, kt=True), objects[:MAX_ITEMS], raw_dir),
         "candidates": _ask_all(models, CANDIDATE_SYSTEM, _schema(CANDIDATE_ANSWERS), candidates[:MAX_ITEMS], raw_dir),
         "structures": _ask_all(models, STRUCTURE_SYSTEM, _schema(STRUCTURE_ANSWERS), structures[:MAX_ITEMS], raw_dir),
         "rooms": _ask_all(models, ROOM_SYSTEM, _schema(ROOM_ANSWERS), rooms[:MAX_ITEMS], raw_dir),
@@ -118,7 +146,7 @@ def agreed(answers: dict[str, dict] | None) -> dict | None:
     if not answers:
         return None
     given = list(answers.values())
-    key = lambda a: (a["answer"], a.get("first", 0), a.get("last", 0))  # noqa: E731
+    key = lambda a: (a["answer"], a.get("first", 0), a.get("last", 0), a.get("kt"))  # noqa: E731
     if any(a["answer"] == UNSURE for a in given) or len({key(a) for a in given}) != 1:
         return None
     return given[0]

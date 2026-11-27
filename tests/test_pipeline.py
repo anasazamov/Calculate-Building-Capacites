@@ -167,7 +167,6 @@ def test_object_description_is_read_by_code(tmp_path: Path):
     assert found["source_text"].startswith("Obyekt nomi:") and found["file"] == "conclusion.pdf"
     place = decide.locate(found["value"])
     assert (place.settlement, place.street) == ("payariq tumani", "iforli")
-    assert decide.decide_ko(found)["code"] == "other"
     blank = pymupdf.open()
     blank.new_page().insert_text((60, 80), "Boshqa hujjat", fontsize=11)
     blank.save(str(tmp_path / "blank.pdf"))

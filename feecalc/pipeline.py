@@ -131,7 +131,9 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
             | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
     draft = {"project": project, "conclusion": conclusion, "category_suggestions": {}}
     structures = [r["name"] for r in assess(draft)["hb_rows"]]
-    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), raw_dir, candidate_questions(project))
+    obj = object_description(conclusion_pages)
+    judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), raw_dir, candidate_questions(project),
+                          object_questions(obj, draft))
     suggestions = {name: {"boshqa": "other", judge.UNSURE: "other"}.get(a["model1"]["answer"], a["model1"]["answer"])
                    for name, a in judgments["rooms"].items()}
     timing["categories"] = time.monotonic() - start
@@ -152,7 +154,7 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
         "prompt_version": extract.PROMPT_VERSION,
         "project": project, "conclusion": conclusion,
         "category_suggestions": suggestions, "level_marks": marks, "warnings": warnings,
-        "object": object_description(conclusion_pages), "plans": read_plans(files), "plan_index": read_plan_index(files, judgments), "judgments": judgments,
+        "object": obj, "plans": read_plans(files), "plan_index": read_plan_index(files, judgments), "judgments": judgments,
         "timing": {k: round(v, 2) for k, v in timing.items()},
     }
 
@@ -213,6 +215,15 @@ def candidate_questions(project: dict) -> list[str]:
     return [judge.candidate_question(d["name"], listed) for d in pm.get("dropped_buildings", [])]
 
 
+def object_questions(description: dict | None, result: dict) -> list[str]:
+    """The one object question: what is built (object type, construction type), from the conclusion's object paragraph
+    and the buildings both documents list. Without either there is nothing to ask."""
+    names = [str(b["name"].get("value")) for doc in ("conclusion", "project") for m in [(result.get(doc) or {}).get("model1")]
+             if m for b in m["buildings"] if b["name"].get("value")]
+    text = str((description or {}).get("value") or "")
+    return [judge.object_question(text, names)] if (text or names) else []
+
+
 def rejudge(result: dict, job_dir: Path) -> dict:
     """Run the judgment stage again on a job that is already read (after the questions changed, or for a job read
     before the stage existed). Reading is not repeated. Returns the result with fresh judgments and plan index."""
@@ -234,7 +245,7 @@ def rejudge(result: dict, job_dir: Path) -> dict:
             | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
     structures = [r["name"] for r in assess({**result, "judgments": {}})["hb_rows"]]
     judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), job_dir / "raw",
-                          candidate_questions(result["project"]))
+                          candidate_questions(result["project"]), object_questions(result.get("object"), result))
     return {**result, "judgments": judgments, "plan_index": read_plan_index(result["files"], judgments),
             "plans": result.get("plans") or read_plans(result["files"])}
 
@@ -580,6 +591,10 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
         "industrial": {"rows": industrial, "total": str(industrial_total)},
         "judged_candidates": ({question: (answer or {"answer": None})["answer"] for question, answers in judgments["candidates"].items()
                                for answer in [judge.agreed(answers)]} if "candidates" in judgments else None),
+        # the object question (one item): None when it was not asked (a job read before it existed), else the
+        # agreed answer, or {} when the models could not tell or disagreed
+        "judged_object": (next(iter([judge.agreed(a) or {} for a in judgments["objects"].values()]), {})
+                          if "objects" in judgments else None),
         "judged_structures": ({name: answer["answer"] for name, answers in judgments["structures"].items()
                                for answer in [judge.agreed(answers)] if answer} if "structures" in judgments else None),
         "project_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in p1["buildings"]],
