@@ -185,6 +185,19 @@ def test_failed_job_shows_full_error_and_can_retry(client: TestClient, sample_di
     assert client.get(f"/jobs/{job}/status").json()["status"] == "queued"
 
 
+def test_a_ready_job_can_be_read_again_from_the_start_but_not_a_finalized_one(client: TestClient, sample_dir: Path):
+    login(client)
+    job = upload(client, sample_dir)
+    assert client.get(f"/jobs/{job}/status").json()["status"] == "ready"
+    assert "Boshidan qayta o'qish" in client.get(f"/jobs/{job}/proposal").text
+    assert client.post(f"/jobs/{job}/retry").status_code == 303
+    assert client.get(f"/jobs/{job}/status").json()["status"] == "queued"
+    client.app.state.run_job(job)  # type: ignore[attr-defined]
+    assert client.get(f"/jobs/{job}/status").json()["status"] == "ready"
+    client.app.state.store.set_job(job, status="finalized")  # type: ignore[attr-defined]
+    assert client.post(f"/jobs/{job}/retry").status_code == 409
+
+
 def test_whoami_rejects_external_redirect(client: TestClient):
     assert client.post("/whoami", data={"name": "A", "next": "//evil.example"}).status_code == 400
 

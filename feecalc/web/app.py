@@ -651,14 +651,16 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
 
     @app.post("/jobs/{job_id}/retry")
     def retry(request: Request, job_id: int) -> Response:
+        """Read the documents again from the start: a job that failed, or one that is ready but not finalized (after
+        the reading improved). Staff decisions stay; a value whose reading changed is asked again where it applies."""
         user = require_staff(request)
         job = get_job(job_id)
-        if job["status"] != "failed":
-            raise HTTPException(409, "Faqat xato bilan to'xtagan ishni qayta ishga tushirish mumkin")
+        if job["status"] not in ("failed", "ready"):
+            raise HTTPException(409, "Faqat xato bilan to'xtagan yoki tayyor (yakunlanmagan) ishni qayta o'qish mumkin")
         store.set_job(job_id, status="queued", stage="", error="")
-        store.audit(job_id, user, "job_retried")
+        store.audit(job_id, user, "job_retried" if job["status"] == "failed" else "job_reread")
         jobs.put(job_id)
-        return flash(RedirectResponse(f"/jobs/{job_id}", status_code=303), "O'qish qayta navbatga qo'yildi")
+        return flash(RedirectResponse(f"/jobs/{job_id}", status_code=303), "Hujjatlar qayta o'qish uchun navbatga qo'yildi")
 
     @app.get("/jobs/{job_id}/review", response_class=HTMLResponse)
     def review(request: Request, job_id: int) -> Response:
