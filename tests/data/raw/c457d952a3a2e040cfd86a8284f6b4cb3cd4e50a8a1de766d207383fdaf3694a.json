@@ -1,0 +1,110 @@
+{
+ "model": "model1",
+ "url": "http://127.0.0.1:8001/v1",
+ "time": "2026-11-27T05:24:10",
+ "duration_s": 3.092,
+ "prompt_hash": "7070342696716aa3e2dd0c187ae1741c4b9c9cc37ff14efdc2551023bda81002",
+ "request": {
+  "model": "gemma-4-31b-it",
+  "messages": [
+   {
+    "role": "system",
+    "content": "Siz infratuzilma yig'imini hisoblovchi mutaxassissiz (VM 151-son qarori, 4-ilova). Ekspertiza xulosasidagi obyekt nomi\n(nima va qayerda quriladi) va binolar ro'yxati beriladi. Ikki savol, faqat QURILADIGAN (yangi) bino(lar) bo'yicha: buziladigan,\no'rnida qurilish uchun olib tashlanadigan yoki saqlanadigan eski bino hisobga olinmaydi.\n1) \"answer\" — obyekt turi (Ko):\n- \"ijtimoiy\" — ijtimoiy xususiy obyekt: o'quv markazi, xususiy maktab, xususiy tibbiyot muassasasi, klinika va shu kabilar (0,8);\n- \"sanoat\" — sanoat binosi: ishlab chiqarish binosi, omborxona, sanoat-sinov laboratoriyasi (0,5);\n- \"boshqa\" — qolgan hamma obyektlar: savdo, maishiy xizmat, ofis, mehmonxona, turar joy va hokazo (1);\n- \"aralash\" — quriladigan bino(lar) yuqoridagilarning bir nechtasiga birdaniga tegishli (masalan, savdo + o'quv markazi);\n- \"aniq_emas\" — matndan bilib bo'lmaydi.\n(Davlat ulushi 50 foizdan ortiq loyiha hujjatdan aniqlanmaydi — uni so'ramaymiz.)\n2) \"kt\" — obyekt nomi matnida qurilish turi qanday yozilgan: \"yangi\" (yangi qurilish), \"rekonstruksiya\" (mavjud binoni\nrekonstruksiya qilish, shu jumladan buzib o'rnida qurish deb yozilgan bo'lsa), \"renovatsiya\", yoki matnda yozilmagan bo'lsa \"aniq_emas\".\nAvval bir-ikki jumla mulohaza, keyin javob. Faqat JSON:\n{\"reason\": \"<mulohaza>\", \"answer\": \"ijtimoiy\" | \"sanoat\" | \"boshqa\" | \"aralash\" | \"aniq_emas\",\n \"kt\": \"yangi\" | \"rekonstruksiya\" | \"renovatsiya\" | \"aniq_emas\"}"
+   },
+   {
+    "role": "user",
+    "content": "Obyekt nomi: «»\nBinolar ro'yxati: «Tip-2»; «Tip-1»; «16-ти этажный жилой дом Тип-2»"
+   }
+  ],
+  "max_tokens": 600,
+  "response_format": {
+   "type": "json_schema",
+   "json_schema": {
+    "name": "answer",
+    "strict": true,
+    "schema": {
+     "type": "object",
+     "properties": {
+      "reason": {
+       "type": "string",
+       "maxLength": 400
+      },
+      "answer": {
+       "type": "string",
+       "enum": [
+        "ijtimoiy",
+        "sanoat",
+        "boshqa",
+        "aralash",
+        "aniq_emas"
+       ]
+      },
+      "kt": {
+       "type": "string",
+       "enum": [
+        "yangi",
+        "rekonstruksiya",
+        "renovatsiya",
+        "aniq_emas"
+       ]
+      }
+     },
+     "required": [
+      "reason",
+      "answer",
+      "kt"
+     ],
+     "additionalProperties": false
+    }
+   }
+  },
+  "temperature": 0.2,
+  "top_p": 0.8,
+  "top_k": 20,
+  "presence_penalty": 0,
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  }
+ },
+ "response": {
+  "id": "chatcmpl-bf750e23cc416cf7",
+  "object": "chat.completion",
+  "created": 1795757047,
+  "model": "gemma-4-31b-it",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "{\n  \"reason\": \"Binolar ro'yxatida '16-ти этажный жилой дом' (16 qavatli turar uy) ko'rsatilgan, bu turar joy obyekti hisoblanadi. Qurilish turi (yangi yoki rekonstruksiya) haqida matnda ma'lumot berilmagan.\",\n  \"answer\": \"boshqa\",\n  \"kt\": \"aniq_emas\"\n}",
+     "refusal": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "stop",
+    "stop_reason": 106,
+    "token_ids": null,
+    "routed_experts": null,
+    "weight_versions": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.34.0-2e948d06",
+  "usage": {
+   "prompt_tokens": 621,
+   "total_tokens": 722,
+   "completion_tokens": 101,
+   "completion_tokens_details": {
+    "reasoning_tokens": 0
+   }
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "ec_transfer_params": null,
+  "metrics": null
+ }
+}

@@ -1,8 +1,8 @@
 {
  "model": "model1",
  "url": "http://127.0.0.1:8001/v1",
- "time": "2026-11-26T10:16:53",
- "duration_s": 1.442,
+ "time": "2026-11-27T05:24:58",
+ "duration_s": 1.525,
  "prompt_hash": "4967335adfc8c22e401c4aa6c9e26ef225fafec27173ddc07ad1fd8bbf736ac4",
  "request": {
   "model": "gemma-4-31b-it",
@@ -56,16 +56,16 @@
   }
  },
  "response": {
-  "id": "chatcmpl-bdb44689eb734dba",
+  "id": "chatcmpl-9a8685d6ba95400a",
   "object": "chat.completion",
-  "created": 1795688212,
+  "created": 1795757097,
   "model": "gemma-4-31b-it",
   "choices": [
    {
     "index": 0,
     "message": {
      "role": "assistant",
-     "content": "{\"reason\": \"Berilgan qatorda 'Turar joy binosi' deb ko'rsatilgan, bu odamlar yashashi uchun mo'ljallangan oddiy bino hisoblanadi.\", \"answer\": \"bino\"}",
+     "content": "{\"reason\": \"Berilgan qatorda 'Turar joy binosi' deb ko'rsatilgan. Bu odamlar yashashi uchun mo'ljallangan oddiy bino hisoblanadi.\", \"answer\": \"bino\"}",
      "refusal": null,
      "audio": null,
      "function_call": null,

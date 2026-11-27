@@ -327,8 +327,8 @@ def test_proposal_page_shows_the_whole_recommendation(client: TestClient, sample
     # no list of central streets has been entered: Kj is asked, the fee is not computed yet
     assert 'name="kj" required' in page and "markaziy qatnov ko'chalari ro'yxati ma'lumotnomaga kiritilmagan" in page
     assert "Yig'imni hisoblash uchun chap tomonda tanlang" in page
-    # the demo conclusion has no "Obyekt nomi" line: the object type rests on the largest building, said as an assumption
-    assert 'name="ko" value="other"' in page and "eng katta bino nomi" in page
+    # the demo conclusion has no "Obyekt nomi" line: the judgment stage decides the object type from the building list
+    assert 'name="ko" value="other"' in page and "model mulohazasi" in page
 
 
 def test_one_step_approval_finalizes_and_produces_the_contract_annex(client: TestClient, sample_dir: Path):
