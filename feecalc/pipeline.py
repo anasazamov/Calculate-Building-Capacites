@@ -54,7 +54,8 @@ def classify_sheets(m: llm.Model, pages: list[ingest.Page], raw_dir: Path) -> di
 
 def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path,
                    progress: Progress = lambda stage: None,
-                   report: Callable[[int, int], None] = lambda done, total: None) -> dict:
+                   report: Callable[[int, int], None] = lambda done, total: None,
+                   art_pdfs: list[Path] | None = None) -> dict:
     """Read both documents with the reading model. Any failure propagates to the job boundary.
 
     `project_pdfs` may be empty: then only the conclusion is read and every comparison stays
@@ -72,6 +73,8 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     progress("ingest")
     project_pages = [(pdf, ingest.ingest(pdf, image_dir)) for pdf in project_pdfs]
     conclusion_pages = ingest.ingest(conclusion_pdf, image_dir)
+    # the architectural-planning assignment (optional): construction type and plot boundaries (judge.SITE_SYSTEM)
+    art_pages = [(pdf, ingest.ingest(pdf, image_dir)) for pdf in (art_pdfs or [])]
     timing["ingest"] = time.monotonic() - start
 
     start = time.monotonic()
@@ -84,6 +87,8 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     files.append({"role": "conclusion", "name": conclusion_pdf.name, "path": str(conclusion_pdf),
                   "sha256": ingest.sha256_file(conclusion_pdf),
                   "pages": [_page_meta(p, None) for p in conclusion_pages]})
+    files += [{"role": "art", "name": pdf.name, "path": str(pdf), "sha256": ingest.sha256_file(pdf),
+               "pages": [_page_meta(p, None) for p in pages]} for pdf, pages in art_pages]
 
     total = len(models) * (len(extract.conclusion_chunks(conclusion_pages).chunks) + sum(
         len(extract.project_chunks(pdf, pages, kinds).chunks) for pdf, pages, kinds in project_files))
@@ -134,7 +139,7 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     structures = [r["name"] for r in assess(draft)["hb_rows"]]
     obj = object_description(conclusion_pages)
     judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), raw_dir, candidate_questions(project),
-                          object_questions(obj, draft))
+                          object_questions(obj, draft), site_questions(files))
     suggestions = {name: {"boshqa": "other", judge.UNSURE: "other"}.get(a["model1"]["answer"], a["model1"]["answer"])
                    for name, a in judgments["rooms"].items()}
     timing["categories"] = time.monotonic() - start
@@ -219,6 +224,18 @@ def candidate_questions(project: dict) -> list[str]:
     return [judge.candidate_question(d["name"], listed) for d in pm.get("dropped_buildings", [])]
 
 
+def site_questions(files: list[dict]) -> list[str]:
+    """The one site question: from the ART when one was given (it states the basis documents and the plot boundaries),
+    otherwise from the opening of the conclusion (its general-plan paragraph names the boundaries too)."""
+    for role, label in (("art", "ART"), ("conclusion", "Xulosa")):
+        docs = [f for f in files if f["role"] == role]
+        if docs:
+            text = chr(10).join(p.text for f in docs for p in ingest.ingest(Path(f["path"]))[:3])
+            if text.strip():
+                return [judge.site_question(label, text)]
+    return []
+
+
 def object_questions(description: dict | None, result: dict) -> list[str]:
     """The one object question: what is built (object type, construction type), from the conclusion's object paragraph
     and the buildings both documents list. Without either there is nothing to ask."""
@@ -249,7 +266,8 @@ def rejudge(result: dict, job_dir: Path) -> dict:
             | {r["name"] for r in pm["rooms"] if volumes.needs_model_suggestion(r["name"], "room", r.get("level"), None)})
     structures = [r["name"] for r in assess({**result, "judgments": {}})["hb_rows"]]
     judgments = judge.run(models, structures, unknown, unread_plan_titles(project_files), job_dir / "raw",
-                          candidate_questions(result["project"]), object_questions(result.get("object"), result))
+                          candidate_questions(result["project"]), object_questions(result.get("object"), result),
+                          site_questions(result["files"]))
     return {**result, "judgments": judgments, "plan_index": read_plan_index(result["files"], judgments),
             "plans": result.get("plans") or read_plans(result["files"])}
 
@@ -599,6 +617,9 @@ def assess(result: dict, overrides: dict[str, dict] | None = None, permitted_flo
         # agreed answer, or {} when the models could not tell or disagreed
         "judged_object": (next(iter([judge.agreed(a) or {} for a in judgments["objects"].values()]), {})
                           if "objects" in judgments else None),
+        # the site question: the agreed answer and which document it was asked from ("ART" or "Xulosa")
+        "judged_site": (next(iter([{**(judge.agreed(a) or {}), "source": q.split(chr(10), 1)[0].removeprefix("Manba: ")}
+                                   for q, a in judgments["sites"].items()]), {}) if "sites" in judgments else None),
         "judged_structures": ({name: answer["answer"] for name, answers in judgments["structures"].items()
                                for answer in [judge.agreed(answers)] if answer} if "structures" in judgments else None),
         "project_buildings": [str(b["name"].get("value") or "(nomsiz)") for b in p1["buildings"]],

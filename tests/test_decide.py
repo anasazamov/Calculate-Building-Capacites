@@ -262,3 +262,32 @@ def test_a_building_named_without_figures_is_never_dropped_silently():
     view["judged_candidates"]["Qator: «Sport zali»\nRo'yxatdagi..."] = "yangi_bino"
     blocked = decide.decide_hb(view, industrial=False)
     assert blocked["value"] is None and "Sport zali" in blocked["assumptions"][-1]
+
+
+def _site_view(site: dict | None, construction: str = "Yangi qurilish") -> dict:
+    rows = [hb_row("Savdo binosi", "2226")]
+    return {"hb_rows": rows, "components": [], "heights": [], "buildings": [],
+            "scalar_rows": [{"label": "Qurilish turi", "project": None, "conclusion": value(construction)}],
+            "judged_site": site, "judged_structures": {},
+            "volumes": {"Hb": {"proposal": "2226", "formula": "f"}, "Hyu": {"proposal": "0", "formula": "0", "notes": []},
+                        "Ha": {"proposal": "0", "formula": "0", "notes": []}, "Ht": {"proposal": "0", "formula": "0", "notes": []},
+                        "Hu": {"proposal": "0", "formula": "0", "notes": []}}}
+
+
+def test_construction_type_from_the_art_and_location_from_the_plot_boundaries():
+    where = value("Samarqand viloyati Payariq tumani, Iforli ko`chasi 36-uy savdo binosi qurilishi")
+    art = {"answer": "markaziy", "kt": "rekonstruksiya", "reason": "turar joyning bir qismini buzib; g'arbda avtomobil yo'li",
+           "source": "ART"}
+    rec = decide.recommend(_site_view(art), where, decide.Reference(), None)
+    kt, kj = rec["coefficients"]["kt"], rec["coefficients"]["kj"]
+    assert kt["code"] == "reconstruction" and "ART" in kt["basis"] and "xulosada esa" in kt["basis"]   # ART over the line
+    assert kj["code"] == "central" and kj["assumed"] and "Tasdiqlang" in kj["basis"]
+    # a list of central streets, when entered, decides instead of the judgment
+    listed = decide.Reference(central_streets={"payariq tumani": [("Iforli", "Kengash qarori")]})
+    assert decide.recommend(_site_view(art), where, listed, None)["coefficients"]["kj"]["assumed"] is False
+    # without an ART the conclusion's own line stands; the plot boundaries come from the conclusion
+    from_conclusion = {"answer": "boshqa_hudud", "kt": "aniq_emas", "reason": "ichki yo'l", "source": "Xulosa"}
+    rec = decide.recommend(_site_view(from_conclusion), where, decide.Reference(), None)
+    assert rec["coefficients"]["kt"]["code"] == "new" and rec["coefficients"]["kj"]["code"] == "other"
+    # the models could not tell: Kj stays open for staff
+    assert decide.recommend(_site_view({"source": "ART"}), where, decide.Reference(), None)["coefficients"]["kj"]["code"] is None

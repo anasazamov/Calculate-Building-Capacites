@@ -333,12 +333,13 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         files = store.files(job_id)
         project = [Path(f["path"]) for f in files if f["role"] == "project"]
         conclusion = [Path(f["path"]) for f in files if f["role"] == "conclusion"]
+        art = [Path(f["path"]) for f in files if f["role"] == "art"]
         store.set_job(job_id, status="running", stage="ingest", error="", started_at=now(),
                       requests_total=None, requests_done=None)
         result = pipeline.run_extraction(
             data_dir / "jobs" / str(job_id), project, conclusion[0],
             lambda stage: store.set_job(job_id, stage=stage),
-            lambda done, total: store.set_job(job_id, requests_done=done, requests_total=total))
+            lambda done, total: store.set_job(job_id, requests_done=done, requests_total=total), art)
         store.set_job(job_id, status="ready", stage="done", result=result)
 
     def judge_again(job_id: int) -> None:
@@ -624,9 +625,10 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
 
     @app.post("/jobs")
     async def create_job(request: Request, title: str = Form(""), conclusion: UploadFile = File(...),
-                         project: list[UploadFile] = File(default_factory=list)) -> Response:
+                         project: list[UploadFile] = File(default_factory=list),
+                         art: list[UploadFile] = File(default_factory=list)) -> Response:
         user = require_staff(request)
-        job_id = await new_job(title, user, conclusion, project)
+        job_id = await new_job(title, user, conclusion, project, art=art)
         return RedirectResponse(f"/jobs/{job_id}", status_code=303)
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -856,9 +858,11 @@ def create_app(data_dir: Path = DATA_DIR, start_worker: bool = True, password: s
         return finalize_job(job_id, user, calc, contract_number, contract_date)
 
     async def new_job(title: str, user: str, conclusion: UploadFile, project: list[UploadFile],
-                      client: str | None = None, external_id: str | None = None) -> int:
-        """Store the uploaded PDFs and queue the job. The project is optional: a conclusion alone can be read."""
-        uploads = [("project", f) for f in project if f.filename] + [("conclusion", conclusion)]
+                      client: str | None = None, external_id: str | None = None, art: list[UploadFile] | None = None) -> int:
+        """Store the uploaded PDFs and queue the job. The project is optional: a conclusion alone can be read.
+        The ART (architectural-planning assignment) is optional too: it gives the construction type and the plot boundaries."""
+        uploads = ([("project", f) for f in project if f.filename] + [("conclusion", conclusion)]
+                   + [("art", f) for f in (art or []) if f.filename])
         for _role, f in uploads:
             if not (f.filename or "").lower().endswith(".pdf"):
                 raise HTTPException(400, f"Faqat PDF qabul qilinadi: {f.filename!r}")

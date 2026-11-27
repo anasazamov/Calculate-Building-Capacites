@@ -433,13 +433,28 @@ def recommend(view: dict, description: dict | None, reference: Reference, permit
         "kz": decide_kz(place, reference),
         "kj": decide_kj(place, reference),
     }
+    site = view.get("judged_site") or {}
+    labels = {"new": "yangi qurilish", "reconstruction": "rekonstruksiya", "renovation": "renovatsiya"}
+    art_kt = {"yangi": "new", "rekonstruksiya": "reconstruction", "renovatsiya": "renovation"}.get(str(site.get("kt")))
+    if site.get("source") == "ART" and art_kt:
+        # the ART states what the design is for and on what permits (the inspectors take Kt from it)
+        line = coefficients["kt"]
+        differs = line["code"] and line["code"] != art_kt
+        coefficients["kt"] = _decision(art_kt, f"ART bo'yicha: {labels[art_kt]} (model mulohazasi: {site.get('reason', '')})"
+                                       + (f"; xulosada esa «{labels[line['code']]}» yozilgan — ART asos qilib olindi" if differs else ""))
+    if coefficients["kj"]["code"] is None and place.settlement and not reference.central_streets.get(place.settlement):
+        kj = {"markaziy": "central", "boshqa_hudud": "other"}.get(str(site.get("answer")))
+        if kj:
+            coefficients["kj"] = _decision(kj, f"«{place.settlement}» uchun markaziy ko'chalar ro'yxati kiritilmagan; {site['source']}dagi "
+                                               f"uchastka chegaralari bo'yicha: {'markaziy qatnov ko`chasiga tutashadi' if kj == 'central' else 'markaziy qatnov ko`chalaridan boshqa hudud'} "
+                                               f"(model mulohazasi: {site.get('reason', '')}). Tasdiqlang yoki ro'yxatni kiriting",
+                                           assumed=True)
     # the object paragraph may name another construction type than the conclusion's "Qurilish turi" line
     # ("... rekonstruksiya qilib, buzib, o'rnida ... qurilishi" next to "Qurilish turi: Yangi qurilish"): shown, not chosen
     named = {"yangi": "new", "rekonstruksiya": "reconstruction", "renovatsiya": "renovation"}.get(
         str((view.get("judged_object") or {}).get("kt")))
     kt = coefficients["kt"]
-    if named and kt["code"] and named != kt["code"]:
-        labels = {"new": "yangi qurilish", "reconstruction": "rekonstruksiya", "renovation": "renovatsiya"}
+    if named and kt["code"] and named != kt["code"] and not (site.get("source") == "ART" and art_kt):
         coefficients["kt"] = {**kt, "assumed": True,
                               "basis": kt["basis"] + f"; lekin obyekt nomi matnida — {labels[named]} "
                                        f"(«{str((description or {}).get('value') or '')[:160]}»). Qaysi biri to'g'ri ekanini "

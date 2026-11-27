@@ -90,6 +90,28 @@ OBJECT_ANSWERS = ("ijtimoiy", "sanoat", "boshqa", "aralash", UNSURE)
 OBJECT_KT_ANSWERS = ("yangi", "rekonstruksiya", "renovatsiya", UNSURE)
 
 
+SITE_SYSTEM = """Siz infratuzilma yig'imini hisoblovchi mutaxassissiz (VM 151-son qarori, 4-ilova). Hujjat matni beriladi: arxitektura-
+rejalashtirish topshirig'i (ART) yoki ekspertiza xulosasining boshi. Ikki savol:
+1) "answer" — obyekt joylashuvi (Kj) qarordagi ta'rif bo'yicha:
+- "markaziy" — yer uchastkasi bevosita MARKAZIY QATNOV KO'CHASIGA tutashadi: avtomobil yo'li, magistral, katta shahar yoki tuman
+  ko'chasi, transport oqimi o'tadigan asosiy ko'cha (Kj = 1);
+- "boshqa_hudud" — uchastka faqat ichki yo'l, mahalliy (mahalla) yo'l, tor ko'cha, dala, bo'sh yer yoki boshqa uchastkalar bilan
+  chegaradosh — markaziy qatnov ko'chalaridan boshqa hudud (Kj = 0,6);
+- "aniq_emas" — matnda uchastka chegaralari yoki tutash yo'llar haqida ma'lumot yo'q.
+2) "kt" — qurilish turi, matndagi loyihaviy bino turi va ASOS bo'lgan hujjatlar (ruxsatnomalar) bo'yicha: "yangi" (bo'sh yoki
+auksiondan olingan yerda yangi qurilish), "rekonstruksiya" (mavjud binoni rekonstruksiya qilish, ixtisosini o'zgartirish, mavjud binoni
+yoki uning bir qismini buzib o'rnida qurish), "renovatsiya", yoki matndan bilib bo'lmasa "aniq_emas".
+Avval bir-ikki jumla mulohaza (qaysi jumlaga tayanganingizni ayting), keyin javob. Faqat JSON:
+{"reason": "<mulohaza>", "answer": "markaziy" | "boshqa_hudud" | "aniq_emas", "kt": "yangi" | "rekonstruksiya" | "renovatsiya" | "aniq_emas"}"""
+SITE_ANSWERS = ("markaziy", "boshqa_hudud", UNSURE)
+SITE_CHARS = 5000        # the opening of the document: object type, basis documents, plot boundaries
+
+
+def site_question(source: str, text: str) -> str:
+    """`source`: "ART" or "Xulosa"; `text`: the opening pages of that document."""
+    return f"Manba: {source}\n\n" + " ".join(text.split())[:SITE_CHARS]
+
+
 def object_question(description: str, buildings: list[str]) -> str:
     return f"Obyekt nomi: «{description}»\nBinolar ro'yxati: " + ("; ".join(f"«{n}»" for n in buildings[:12]) or "berilmagan")
 
@@ -123,16 +145,19 @@ def _ask_all(models: list[llm.Model], system: str, schema: dict, items: list[str
 
 
 def run(models: list[llm.Model], structures: list[str], rooms: list[str], sheets: list[str], raw_dir: Path,
-        candidates: list[str] | None = None, objects: list[str] | None = None) -> dict:
+        candidates: list[str] | None = None, objects: list[str] | None = None, sites: list[str] | None = None) -> dict:
     """Ask the kinds of questions. Returns {"objects", "structures", "rooms", "sheets", "candidates", "cut"}: item -> model -> answer.
     `candidates`: questions about buildings named in the project without any figure (see candidate_question).
-    `objects`: the object question (see object_question): object type Ko, and the construction type the text names."""
+    `objects`: the object question (see object_question): object type Ko, and the construction type the text names.
+    `sites`: the site question (see site_question): location Kj from the plot boundaries, construction type from the ART."""
     candidates = candidates or []
     objects = objects or []
+    sites = sites or []
     cut = {kind: max(0, len(items) - MAX_ITEMS) for kind, items in (("structures", structures), ("rooms", rooms), ("sheets", sheets),
                                                                        ("candidates", candidates))}
     return {
         "objects": _ask_all(models, OBJECT_SYSTEM, _schema(OBJECT_ANSWERS, kt=True), objects[:MAX_ITEMS], raw_dir),
+        "sites": _ask_all(models, SITE_SYSTEM, _schema(SITE_ANSWERS, kt=True), sites[:MAX_ITEMS], raw_dir),
         "candidates": _ask_all(models, CANDIDATE_SYSTEM, _schema(CANDIDATE_ANSWERS), candidates[:MAX_ITEMS], raw_dir),
         "structures": _ask_all(models, STRUCTURE_SYSTEM, _schema(STRUCTURE_ANSWERS), structures[:MAX_ITEMS], raw_dir),
         "rooms": _ask_all(models, ROOM_SYSTEM, _schema(ROOM_ANSWERS), rooms[:MAX_ITEMS], raw_dir),

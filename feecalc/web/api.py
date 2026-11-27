@@ -129,6 +129,7 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
     @router.post("/jobs", status_code=202)
     async def create_job(name: str = Depends(client), conclusion: UploadFile = File(..., description="Expertise conclusion, PDF"),
                          project: list[UploadFile] = File(default_factory=list, description="Project album PDFs (optional, several)"),
+                         art: list[UploadFile] = File(default_factory=list, description="Architectural-planning assignment (ART) PDF (optional): construction type and plot boundaries"),
                          title: str = Form(""), external_id: str = Form("", description="Your identifier; repeating it returns the same job"),
                          actor: str = Form("")) -> dict:
         """Upload the documents; reading starts in the background. Poll GET /jobs/{id} until status is `ready`."""
@@ -136,7 +137,7 @@ def register(app: FastAPI, h: SimpleNamespace) -> None:
             existing = h.store.job_by_external(name, external_id.strip())
             if existing is not None:
                 return summary(h.get_job(existing))
-        job_id = await h.new_job(title, who(name, actor), conclusion, project, name, external_id.strip() or None)
+        job_id = await h.new_job(title, who(name, actor), conclusion, project, name, external_id.strip() or None, art)
         return summary(h.get_job(job_id))
 
     @router.get("/jobs")
