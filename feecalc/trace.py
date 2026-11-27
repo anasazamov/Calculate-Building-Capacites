@@ -29,8 +29,23 @@ def steps(result: dict, view: dict, fee_data: dict | None = None) -> list[dict]:
     pages = sum(len(f["pages"]) for f in files)
     textless = sum(1 for f in files for p in f["pages"] if p["textless"])
     _step(out, "Hujjatlarni ochish", "PDF matn qatlami va sahifa rasmlari (PyMuPDF)",
-          f"{len(files)} ta fayl, {pages} sahifa" + (f"; {textless} sahifada matn qatlami yo'q — o'qilmadi" if textless else ""),
+          f"{len(files)} ta fayl, {pages} sahifa" + (f"; {textless} sahifada na matn qatlami, na rasmda o'qiladigan yozuv bor"
+                                                     if textless else ""),
           "warning" if textless else "ok")
+
+    with_images = [p for f in files for p in f["pages"] if p.get("image_ratio")]
+    vision = result.get("vision_model")
+    if with_images and vision:
+        words = sum(p.get("image_words") or 0 for p in with_images)
+        unclear = sum(p.get("image_unclear") or 0 for p in with_images)
+        _step(out, "Rasm ichidagi yozuvni o'qish", f"rasm modeli (VLM, {vision['name']}): har katak va yozuv koordinatasi bilan; "
+              "matn qatlamida allaqachon bor yozuv takror qo'shilmaydi",
+              f"{len(with_images)} ta sahifada rasm; {words} ta so'z rasmdan o'qildi"
+              + (f"; {unclear} ta rasmdagi yozuv ishonchli o'qilmadi — qo'lda ko'ring" if unclear else ""),
+              "warning" if unclear else "ok")
+    elif with_images:
+        _step(out, "Rasm ichidagi yozuvni o'qish", "bu ish rasm modeli qo'shilishidan oldin o'qilgan",
+              f"{len(with_images)} ta sahifada rasm bor — rasm ichidagi yozuv uchun ishni «Boshidan qayta o'qish» kerak", "warning")
 
     kinds = Counter((p["sheet"] or {}).get("kind") for f in files if f["role"] == "project" for p in f["pages"])
     if kinds:

@@ -33,6 +33,7 @@ Progress = Callable[[str], None]
 def _page_meta(p: ingest.Page, st: classify.SheetType | None) -> dict:
     return {"number": p.number, "width": p.width, "height": p.height, "char_count": p.char_count,
             "textless": p.textless, "image_ratio": p.image_ratio, "image": p.image_path, "zoom": p.image_zoom,
+            "image_words": p.image_words, "image_unclear": p.image_unclear,
             "sheet": None if st is None else asdict(st)}
 
 
@@ -151,6 +152,8 @@ def run_extraction(job_dir: Path, project_pdfs: list[Path], conclusion_pdf: Path
     return {
         "files": files,
         "models": {m.key: {"name": m.name, "vllm_version": llm.vllm_version(m)} for m in models},
+        # the vision model that read the writing inside raster images (ingest.py), when any page has such images
+        "vision_model": ({"name": llm.vlm().name} if any(p["image_ratio"] for f in files for p in f["pages"]) else None),
         "prompt_version": extract.PROMPT_VERSION,
         "project": project, "conclusion": conclusion,
         "category_suggestions": suggestions, "level_marks": marks, "warnings": warnings,
