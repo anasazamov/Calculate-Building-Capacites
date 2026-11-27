@@ -13,6 +13,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import math
 import os
 import re
 import statistics
@@ -36,10 +37,14 @@ VLM_MAX_SIDE = 2048           # longest side, pixels, of an image sent to the vi
 VLM_MIN_DPI = 150             # a small image is enlarged to at least this resolution
 VLM_MAX_TOKENS = 6000         # the longest table answer measured was ~1.9k tokens; a denser image is read in tiles
 VLM_WORKERS = 8               # images of one document read at the same time
-VLM_VERSION = 2              # part of the cache key: raise it when the question or the settings change
+VLM_VERSION = 3              # part of the cache key: raise it when the question or the settings change
 VLM_CACHE = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm"
 VLM_RAW = Path(os.environ.get("FEECALC_DATA", "data")) / "vlm_raw"
 TEXT_KINDS = ("table", "text", "stamp", "drawing")  # images whose writing is read into the page
+VLM_PAGE_DPI = 150            # a page without a text layer is rendered at this resolution ...
+VLM_TILE_PX = 1400            # ... and cut into tiles of at most about this many pixels a side
+VLM_TILE_OVERLAP = 0.06       # tiles overlap so that no lettering is cut in two
+VLM_RUN_LIMIT = 8             # this many items in a row with the same text: the answer has degenerated into a loop
 
 # PyMuPDF 2.1 routes find_tables() through its bundled layout model (ONNX, CPU) whenever the
 # pymupdf-layout package is installed, which it is as a hard dependency. On drawing sheets that
@@ -157,11 +162,32 @@ VLM_SCHEMA: dict = {
 }
 
 
-def _image_regions(p: pymupdf.Page) -> list[tuple[pymupdf.Rect, int]]:
-    """Every sizeable image on the page (each placement once) and the resolution to render it at: its own
-    resolution, at least VLM_MIN_DPI, with the longest side at most VLM_MAX_SIDE pixels."""
+Region = tuple[pymupdf.Rect, int, bool]   # box in page points, render resolution, is it a tile of a whole page
+
+
+def _page_tiles(p: pymupdf.Page) -> list[Region]:
+    """A page without a text layer (a vector drawing whose lettering was turned into curves, or a scan) shown to
+    the vision model whole, cut into overlapping tiles at VLM_PAGE_DPI so that its small lettering stays legible:
+    an A2 sheet squeezed into one 2048-pixel picture would not be readable."""
+    w_px, h_px = p.rect.width / 72 * VLM_PAGE_DPI, p.rect.height / 72 * VLM_PAGE_DPI
+    nx, ny = max(1, math.ceil(w_px / VLM_TILE_PX)), max(1, math.ceil(h_px / VLM_TILE_PX))
+    tw, th = p.rect.width / nx, p.rect.height / ny
+    ox, oy = tw * VLM_TILE_OVERLAP, th * VLM_TILE_OVERLAP
+    return [(pymupdf.Rect(max(0, i * tw - ox), max(0, j * th - oy), min(p.rect.width, (i + 1) * tw + ox),
+                          min(p.rect.height, (j + 1) * th + oy)), VLM_PAGE_DPI, True)
+            for j in range(ny) for i in range(nx)]
+
+
+def _image_regions(p: pymupdf.Page) -> list[Region]:
+    """What the vision model is shown for one page: the whole page in tiles when it has no text layer (see
+    _page_tiles), otherwise every sizeable raster image on it (each placement once) at its own resolution, at least
+    VLM_MIN_DPI, with the longest side at most VLM_MAX_SIDE pixels."""
+    # no text layer and mostly not a raster picture: a vector drawing (lettering as curves) -> the whole page in tiles.
+    # A scan (a picture over most of the page) is read below, at the picture's own resolution.
+    if len(p.get_text("text").strip()) < TEXTLESS_THRESHOLD and _image_ratio(p) < 0.5 and p.get_drawings():
+        return _page_tiles(p)
     area = abs(p.rect) or 1.0
-    out: list[tuple[pymupdf.Rect, int]] = []
+    out: list[Region] = []
     seen: set[tuple[int, int, int, int]] = set()
     for info in p.get_image_info():
         box = pymupdf.Rect(info["bbox"]) & p.rect
@@ -171,12 +197,10 @@ def _image_regions(p: pymupdf.Page) -> list[tuple[pymupdf.Rect, int]]:
         seen.add(key)
         native = info["width"] / max(box.width / 72, 1e-6) if info.get("width") else VLM_MIN_DPI
         cap = VLM_MAX_SIDE / max(box.width / 72, box.height / 72, 1e-6)
-        out.append((box, max(36, int(min(cap, max(VLM_MIN_DPI, native))))))
+        out.append((box, max(36, int(min(cap, max(VLM_MIN_DPI, native)))), False))
     return out
 
 
-VLM_RUN_LIMIT = 8      # this many items in a row with the same text: the answer has degenerated into a loop
-VLM_TILE_OVERLAP = 0.06
 
 
 def _ask_vlm(png: bytes) -> dict:
@@ -273,21 +297,28 @@ def _cache_path(pdf_key: str, index: int) -> Path:
     return VLM_CACHE / f"{pdf_key}_{index + 1}_{model}_v{VLM_VERSION}.json"
 
 
-def _page_regions_read(answers: list[dict], regions: list[tuple[pymupdf.Rect, int]]) -> dict:
-    """The vision model's answers for one page, in page points (the form kept in the cache)."""
-    words, unclear, kinds = [], 0, []
-    for (box, _dpi), a in zip(regions, answers):
+def _page_regions_read(answers: list[dict], regions: list[Region]) -> dict:
+    """The vision model's answers for one page, in page points (the form kept in the cache). A tile of a whole page
+    is always read (its "kind" describes only a part of the sheet); writing read twice where tiles or pictures
+    overlap is kept once."""
+    words: list[list] = []
+    unclear, kinds = 0, []
+    for (box, _dpi, page_tile), a in zip(regions, answers):
         kinds.append(a["kind"])
-        if a["kind"] in TEXT_KINDS and not a["legible"]:
+        if (a["kind"] in TEXT_KINDS or page_tile) and not a["legible"]:
             unclear += 1
-        if a["kind"] not in TEXT_KINDS:
+        if a["kind"] not in TEXT_KINDS and not (page_tile and a["kind"] != "photo"):
             continue
         sx, sy = box.width / llm.VLM_COORD_SCALE, box.height / llm.VLM_COORD_SCALE
         for item in a["items"]:
             bx0, by0, bx1, by1 = item["bbox_2d"]
             if not item["text"].strip() or bx1 <= bx0 or by1 <= by0:
                 continue
-            words.append([box.x0 + bx0 * sx, box.y0 + by0 * sy, box.x0 + bx1 * sx, box.y0 + by1 * sy, item["text"]])
+            x0, y0, x1, y1 = box.x0 + bx0 * sx, box.y0 + by0 * sy, box.x0 + bx1 * sx, box.y0 + by1 * sy
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            if any(k[4] == item["text"] and k[0] <= cx <= k[2] and k[1] <= cy <= k[3] for k in words):
+                continue
+            words.append([x0, y0, x1, y1, item["text"]])
     return {"items": words, "unclear": unclear, "kinds": kinds}
 
 
@@ -307,7 +338,7 @@ def _already_in_text_layer(item: tuple[float, float, float, float, str], text_wo
     return bool(own) and sum(t in near for t in own) / len(own) >= 0.6
 
 
-Pending = list[tuple[int, list[tuple[pymupdf.Rect, int]], list[bytes]]]
+Pending = list[tuple[int, list[Region], list[bytes]]]
 
 
 def _collect_images(doc: pymupdf.Document, pdf_key: str) -> Pending:
@@ -320,7 +351,7 @@ def _collect_images(doc: pymupdf.Document, pdf_key: str) -> Pending:
         regions = _image_regions(p)
         if regions:
             pending.append((i, regions, [p.get_pixmap(clip=box, dpi=dpi, alpha=False).tobytes("png")
-                                         for box, dpi in regions]))
+                                         for box, dpi, _tile in regions]))
     return pending
 
 
@@ -386,7 +417,9 @@ def read_page(doc: pymupdf.Document, index: int, file_name: str, pdf_key: str = 
     words = [Word(w[0], w[1], w[2], w[3], w[4]) for w in p.get_text("words")]
     text = p.get_text("text")
     ratio = _image_ratio(p)
-    extra, unclear = image_words(doc, index, pdf_key or _document_key(doc), words) if ratio > 0 else ([], 0)
+    # raster pictures, or no text layer at all (a vector drawing with its lettering as curves): the vision model reads it
+    needs_vlm = ratio > 0 or len(text.strip()) < TEXTLESS_THRESHOLD
+    extra, unclear = image_words(doc, index, pdf_key or _document_key(doc), words) if needs_vlm else ([], 0)
     if extra:
         words = words + extra
         text = text + "\n" + "\n".join(line.text for line in group_lines(extra))

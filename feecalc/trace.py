@@ -33,14 +33,14 @@ def steps(result: dict, view: dict, fee_data: dict | None = None) -> list[dict]:
                                                      if textless else ""),
           "warning" if textless else "ok")
 
-    with_images = [p for f in files for p in f["pages"] if p.get("image_ratio")]
+    with_images = [p for f in files for p in f["pages"] if p.get("image_ratio") or p.get("image_words") or p.get("image_unclear")]
     vision = result.get("vision_model")
     if with_images and vision:
         words = sum(p.get("image_words") or 0 for p in with_images)
         unclear = sum(p.get("image_unclear") or 0 for p in with_images)
         _step(out, "Rasm ichidagi yozuvni o'qish", f"rasm modeli (VLM, {vision['name']}): har katak va yozuv koordinatasi bilan; "
               "matn qatlamida allaqachon bor yozuv takror qo'shilmaydi",
-              f"{len(with_images)} ta sahifada rasm; {words} ta so'z rasmdan o'qildi"
+              f"{len(with_images)} ta sahifada rasm yoki matn qatlamisiz chizma; {words} ta so'z rasm modeli bilan o'qildi"
               + (f"; {unclear} ta rasmdagi yozuv ishonchli o'qilmadi — qo'lda ko'ring" if unclear else ""),
               "warning" if unclear else "ok")
     elif with_images:

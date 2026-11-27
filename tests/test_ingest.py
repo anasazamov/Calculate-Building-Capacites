@@ -55,7 +55,7 @@ def _raster_pdf(path: Path, lines: list[str]) -> Path:
     picture = sp.get_pixmap(dpi=300)
     doc = pymupdf.open()
     page = doc.new_page(width=842, height=595)
-    page.insert_text((40, 40), "Texnik-iqtisodiy ko'rsatkichlar", fontsize=12)
+    page.insert_text((40, 40), "Texnik-iqtisodiy ko'rsatkichlar (loyiha bosh rejasi bo'yicha)", fontsize=12)
     page.insert_image(pymupdf.Rect(40, 80, 460, 240), pixmap=picture)
     noise = pymupdf.Pixmap(pymupdf.csGRAY, pymupdf.IRect(0, 0, 400, 300), False)
     import random
@@ -106,6 +106,29 @@ def test_text_inside_an_image_is_read_by_the_vision_model_and_cached(tmp_path: P
     assert rects and all(80 <= r[1] <= 240 for r in rects)                 # the highlight lands inside the picture
 
 
+def test_a_vector_drawing_without_a_text_layer_is_read_whole_in_tiles(tmp_path: Path, monkeypatch):
+    import pymupdf
+    doc = pymupdf.open()
+    page = doc.new_page(width=1191, height=1684)                     # A2, lettering turned into curves: lines only
+    for i in range(40):
+        page.draw_line((50, 50 + 40 * i), (1100, 50 + 40 * i))
+    doc.save(str(tmp_path / "vector.pdf"))
+    monkeypatch.setattr(ingest, "VLM_CACHE", tmp_path / "vlm")
+    shown: list[tuple[int, int]] = []
+
+    def fake(png: bytes) -> dict:
+        pix = pymupdf.Pixmap(png)
+        shown.append((pix.width, pix.height))
+        return {"kind": "drawing", "legible": True, "items": [{"text": "Qurilish hajmi 2567,4", "bbox_2d": [400, 400, 600, 450]}]}
+
+    monkeypatch.setattr(ingest, "read_image", fake)
+    p = ingest.ingest(tmp_path / "vector.pdf")[0]
+    assert len(shown) == 6 and all(max(w, h) <= 1600 for w, h in shown)   # 2 x 3 legible tiles, not one squeezed page
+    assert not p.textless and "2567,4" in p.text and p.image_words > 0
+    # the same writing read in two overlapping tiles would be one item; here each tile has its own place
+    assert len({(round(w.x0), round(w.y0)) for w in p.words if w.text == "2567,4"}) == 6
+
+
 def test_illegible_writing_is_counted_and_an_unreachable_model_stops_the_job(tmp_path: Path, monkeypatch):
     import pytest
     from feecalc import llm
@@ -127,7 +150,7 @@ def test_a_value_found_only_in_image_text_is_flagged(tmp_path: Path, monkeypatch
     pdf = _raster_pdf(tmp_path / "scan.pdf", ["Qurilish hajmi 36036 m3"])
     page = ingest.ingest(pdf)[0]
     from_image = {"file": "scan.pdf", "page": 1, "status": "accepted", "source_text": "Qurilish hajmi 36036", "flags": []}
-    from_text = {"file": "scan.pdf", "page": 1, "status": "accepted", "source_text": "Texnik-iqtisodiy ko'rsatkichlar", "flags": []}
+    from_text = {"file": "scan.pdf", "page": 1, "status": "accepted", "source_text": "Texnik-iqtisodiy ko'rsatkichlar (loyiha bosh rejasi bo'yicha)", "flags": []}
     extract.mark_image_values({"a": from_image, "b": [from_text]}, {("scan.pdf", 1): page})
     assert from_image["flags"] == [extract.IMAGE_FLAG] and from_text["flags"] == []
 
